@@ -1,0 +1,28 @@
+# Core deep learning
+torch
+torchvision
+
+# Diffusion model
+diffusers
+transformers
+accelerate
+safetensors
+
+# Real-ESRGAN
+realesrgan
+basicsr
+facexlib
+gfpgan
+
+# Datasets
+datasets
+
+# Metrics
+scikit-image
+lpips
+
+# Utilities
+pillow
+numpy
+pandas
+matplotlib
