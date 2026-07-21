@@ -43,16 +43,16 @@ from PIL import Image
 #     smoothing vs. diffusion detail-invention looks most different)
 #   - open water / coastline (low-texture regions, a good smoothing stress test)
 SHOWCASE_CATEGORIES: List[str] = [
-    "dense_residential",   # repetitive man-made structure
-    "sparse_residential",  # repetitive man-made structure, lower density
-    "freeway",              # fine linear features
-    "runway",                # fine linear features
-    "harbor",                 # mixed structure + water
-    "forest",                 # organic, irregular natural texture
-    "chaparral",              # organic, irregular natural texture
-    "river",                  # low-texture, natural
-    "beach",                  # low-texture, natural
-    "agricultural",           # regular but non-urban texture
+    "dense residential",     # repetitive man-made structure
+    "sparse residential",    # repetitive man-made structure, lower density
+    "freeway",                # fine linear features
+    "runway",                  # fine linear features
+    "harbor",                   # mixed structure + water
+    "forest",                   # organic, irregular natural texture
+    "chaparral",                # organic, irregular natural texture
+    "river",                     # low-texture, natural
+    "beach",                     # low-texture, natural
+    "rectangular farmland",      # regular but non-urban texture
 ]
 
 

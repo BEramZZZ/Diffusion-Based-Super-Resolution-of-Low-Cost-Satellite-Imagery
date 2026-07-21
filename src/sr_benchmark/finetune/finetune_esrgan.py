@@ -114,9 +114,18 @@ def finetune_realesrgan(
     """
     os.makedirs(out_dir, exist_ok=True)
     device = next(upsampler.model.parameters()).device
+    print("Device =", device)
+    # models.py loads this in fp16 whenever CUDA is available (`half=True`),
+    # which is fine for inference but not safe for training: plain Adam +
+    # raw fp16 with no loss scaling can silently underflow small gradients,
+    # especially the low-magnitude ones LoRA/partial produce. Force fp32 for
+    # the training run regardless of the loader's inference precision --
+    # this only affects this in-memory copy, not how the pipeline does
+    # inference elsewhere.
+    upsampler.model = upsampler.model.float()
     model = apply_strategy(upsampler.model, strategy, lora_rank=lora_rank)
     model.train()
-
+    print("Model device =", next(model.parameters()).device)
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     if not trainable_params:
         raise RuntimeError(f"Strategy '{strategy}' left zero trainable parameters -- nothing to optimize.")
