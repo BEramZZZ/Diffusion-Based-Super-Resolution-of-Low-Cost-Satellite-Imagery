@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Real-ESRGAN, End to End: Architecture, Lineage, and Hallucination Risk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0D12;
+    --surface: #12161E;
+    --surface-2: #171C26;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.16);
+    --text: #EDEEF0;
+    --text-secondary: #B4BAC6;
+    --text-muted: #6B7280;
+    --teal: #2DD4BF;
+    --teal-dim: rgba(45,212,191,0.12);
+    --coral: #FF6B4A;
+    --coral-dim: rgba(255,107,74,0.12);
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 120px; }
+
+  .hero {
+    padding: 100px 24px 60px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(45,212,191,0.06), transparent 60%);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 20px;
+  }
+  h1.title {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: clamp(28px, 4vw, 42px);
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    max-width: 780px;
+    margin: 0 auto 16px;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 17px;
+    max-width: 620px;
+    margin: 0 auto 28px;
+  }
+  .byline {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  h2 .num { color: var(--teal); margin-right: 10px; }
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 20px;
+    margin: 32px 0 14px;
+  }
+  p { color: var(--text-secondary); margin-bottom: 14px; }
+  p.lead { color: var(--text); font-size: 17px; }
+  strong { color: var(--text); font-weight: 600; }
+  ul { margin: 0 0 16px 20px; color: var(--text-secondary); }
+  li { margin-bottom: 8px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    padding: 5px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .badge-grounded { background: var(--teal-dim); color: var(--teal); border: 1px solid rgba(45,212,191,0.3); }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  @media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card .card-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+  .card .card-title { font-weight: 600; font-size: 16px; margin-bottom: 8px; }
+  .card p { font-size: 14px; margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  td.highlight { color: var(--teal); }
+
+  .ref { font-size: 14px; color: var(--text-secondary); padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .ref:last-child { border-bottom: none; }
+  .ref .ref-year { color: var(--teal); font-family: var(--mono); font-size: 12px; }
+
+  footer { text-align: center; padding: 48px 24px; color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 28px;
+    padding: 11px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--teal);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .nav-link:hover { background: var(--surface-2); border-color: var(--teal); }
+
+  section[id], h3[id] { scroll-margin-top: 24px; }
+
+  /* diagrams break out of the narrow reading column so they render larger */
+  .diagram-bleed {
+    width: min(1600px, 94vw);
+    margin: 14px auto 6px;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .arch-diagram { width: 100%; height: auto; display: block; }
+  .arch-diagram text { font-family: var(--mono); fill: var(--text); }
+  .arch-diagram .sub { fill: var(--text-muted); }
+  .arch-diagram text.title { font-weight: 600; }
+  .arch-node rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; }
+  .arch-node.linked rect { stroke: var(--teal); stroke-width: 1.6; fill: var(--teal-dim); cursor: pointer; }
+  .arch-node.linked:hover rect { fill: rgba(45,212,191,0.22); stroke-width: 2; }
+  .arch-node.linked text.title { fill: var(--teal); }
+  .arch-node.caveat rect { stroke: var(--teal); stroke-width: 1.6; fill: var(--teal-dim); cursor: pointer; }
+  .arch-node.caveat:hover rect { fill: rgba(45,212,191,0.22); }
+  .arch-edge { stroke: var(--border-strong); stroke-width: 1.6; fill: none; }
+  .arch-edge.dashed { stroke-dasharray: 5 4; opacity: 0.75; }
+  .arch-hint { font-family: var(--mono); font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 10px; }
+  .zoom-caption { font-family: var(--mono); font-size: 13.5px; color: var(--teal); text-align: center; margin: 52px 0 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .zoom-sub { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); text-align: center; margin-bottom: 10px; }
+  .arch-op circle { fill: var(--teal-dim); stroke: var(--teal); stroke-width: 1.6; }
+  .arch-op text { fill: var(--teal); font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+  .arch-node.x0 circle { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.6; }
+  .arch-node.x0 text { text-anchor: middle; dominant-baseline: middle; }
+  .arch-bus { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.6; fill: none; }
+  .arch-tap { stroke: var(--text-muted); stroke-width: 1.4; opacity: 0.6; fill: none; }
+  .arch-tap.out { stroke: var(--teal); opacity: 0.65; }
+  .bus-label { font-family: var(--mono); fill: var(--text-muted); text-anchor: middle; }
+  @media (max-width: 700px) {
+    .diagram-bleed { width: 98vw; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">Project 8 &middot; Companion Deep-Dive</div>
+  <h1 class="title">Real-ESRGAN, End to End<br>Architecture, Lineage &amp; Hallucination Risk</h1>
+  <p class="subtitle">Built from three papers &mdash; SRGAN (2017), ESRGAN (2018), Real-ESRGAN (2021) &mdash; tracing why each design choice exists, and what it means for hallucination risk in this project.</p>
+  <div class="byline">Ramzy &middot; USTHB, Algiers</div>
+  <a class="nav-link" href="project8_report.html">&#8592; Back to the main report</a>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">00</span>Full architecture map</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+    <p>Click any teal block below &mdash; it jumps to that layer's explanation. This is a 4-level breakdown: the full pipeline, then a zoom into one RRDB block, then a zoom into one Dense Block inside it (where the actual skip connections live), then a zoom into how upsampling actually reconstructs resolution.</p>
+
+    <defs id="shared-defs" style="display:none"></defs>
+
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1570 300" role="img">
+      <title>Real-ESRGAN generator forward pass, top level</title>
+      <desc>LR input through pixel-unshuffle, shallow conv, the 23-block RRDB trunk, a trunk conv, a long unscaled residual skip back to the shallow-conv output, then two-stage upsampling to HR output.</desc>
+      <defs>
+        <marker id="arch-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+<text class="sub" x="14" y="24" fill="var(--teal)" style="text-transform:uppercase; letter-spacing:0.08em;" font-size="13">Generator (RRDBNet) &mdash; top-level forward pass</text>
+<g class="arch-node">
+<rect x="20" y="76" width="140" height="78" rx="11" />
+<text class="title" x="90.0" y="105.6" text-anchor="middle" font-size="15.5">LR Input</text>
+<text class="sub" x="90.0" y="129.1" text-anchor="middle" font-size="12.5">3&times;H&times;W</text>
+</g>
+<a class="arch-node linked" href="#sec-4a">
+<rect x="210" y="76" width="155" height="78" rx="11" />
+<text class="title" x="287.5" y="105.6" text-anchor="middle" font-size="15.5">Pixel-Unshuffle</text>
+<text class="sub" x="287.5" y="129.1" text-anchor="middle" font-size="12.5">12&times;H/2&times;W/2</text>
+</a>
+<g class="arch-node">
+<rect x="415" y="70" width="155" height="90" rx="11" />
+<text class="title" x="492.5" y="97.0" text-anchor="middle" font-size="15.5">Shallow Conv</text>
+<text class="sub" x="492.5" y="118.5" text-anchor="middle" font-size="12.5">conv_first</text>
+<text class="sub" x="492.5" y="137.0" text-anchor="middle" font-size="12.5">64ch</text>
+</g>
+<a class="arch-node linked" href="#sec-rrdb-zoom">
+<rect x="620" y="67" width="200" height="96" rx="11" />
+<text class="title" x="720.0" y="95.8" text-anchor="middle" font-size="15.5">RRDB Trunk &times;23</text>
+<text class="sub" x="720.0" y="117.3" text-anchor="middle" font-size="12.5">residual-in-residual</text>
+<text class="sub" x="720.0" y="135.8" text-anchor="middle" font-size="12.5">&darr; zoom below</text>
+</a>
+<g class="arch-node">
+<rect x="870" y="70" width="155" height="90" rx="11" />
+<text class="title" x="947.5" y="97.0" text-anchor="middle" font-size="15.5">Trunk Conv</text>
+<text class="sub" x="947.5" y="118.5" text-anchor="middle" font-size="12.5">conv_body</text>
+<text class="sub" x="947.5" y="137.0" text-anchor="middle" font-size="12.5">64ch</text>
+</g>
+<g class="arch-op"><circle cx="1085" cy="115" r="21"/><text x="1085" y="120" font-size="15">+</text></g>
+<a class="arch-node linked" href="#sec-upsample-zoom">
+<rect x="1155" y="67" width="200" height="96" rx="11" />
+<text class="title" x="1255.0" y="95.8" text-anchor="middle" font-size="15.5">Upsample &times;2, &times;2</text>
+<text class="sub" x="1255.0" y="117.3" text-anchor="middle" font-size="12.5">nearest + conv</text>
+<text class="sub" x="1255.0" y="135.8" text-anchor="middle" font-size="12.5">&darr; zoom below</text>
+</a>
+<g class="arch-node">
+<rect x="1405" y="76" width="145" height="78" rx="11" />
+<text class="title" x="1477.5" y="105.6" text-anchor="middle" font-size="15.5">HR Output</text>
+<text class="sub" x="1477.5" y="129.1" text-anchor="middle" font-size="12.5">3&times;4H&times;4W</text>
+</g>
+<line x1="160" y1="115" x2="210" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="365" y1="115" x2="415" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="570" y1="115" x2="620" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="820" y1="115" x2="870" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1025" y1="115" x2="1062" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1108" y1="115" x2="1155" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1355" y1="115" x2="1405" y2="115" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M492.5 160 L492.5 245 L1085 245 L1085 138" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="788.75" y="267" text-anchor="middle" font-size="13">long residual skip around the whole trunk &mdash; identity, NOT &beta;-scaled (unlike the skips inside RRDB, below)</text>
+    </svg>
+    </div>
+
+    <p class="zoom-caption" id="sec-rrdb-zoom">Zoom &mdash; inside one RRDB block</p>
+    <p class="zoom-sub">"residual in residual": 3 Dense Blocks chained, each with its own internal skip, wrapped in one more &beta;-scaled skip</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1345 265" role="img">
+      <title>Inside one RRDB block: three chained Dense Blocks with an outer residual skip</title>
+      <desc>Input x feeds three sequential Dense Blocks, each already containing its own internal residual; the chain's final output is scaled by beta 0.2 and added back to the original input x to form the RRDB block output.</desc>
+<g class="arch-node x0"><circle cx="75" cy="165" r="23"/><text x="75" y="170" font-size="14" text-anchor="middle">x</text></g>
+<text class="sub " x="75" y="210" text-anchor="middle" font-size="12.5">block input, 64ch</text>
+<a class="arch-node linked" href="#sec-rdb-zoom">
+<rect x="135" y="120" width="195" height="90" rx="11" />
+<text class="title" x="232.5" y="154.2" text-anchor="middle" font-size="15.5">Dense Block 1</text>
+<text class="sub" x="232.5" y="177.7" text-anchor="middle" font-size="12.5">5 conv, dense &mdash; zoom &darr;</text>
+</a>
+<a class="arch-node linked" href="#sec-rdb-zoom">
+<rect x="390" y="120" width="195" height="90" rx="11" />
+<text class="title" x="487.5" y="154.2" text-anchor="middle" font-size="15.5">Dense Block 2</text>
+<text class="sub" x="487.5" y="177.7" text-anchor="middle" font-size="12.5">same structure</text>
+</a>
+<a class="arch-node linked" href="#sec-rdb-zoom">
+<rect x="645" y="120" width="195" height="90" rx="11" />
+<text class="title" x="742.5" y="154.2" text-anchor="middle" font-size="15.5">Dense Block 3</text>
+<text class="sub" x="742.5" y="177.7" text-anchor="middle" font-size="12.5">same structure</text>
+</a>
+<text class="sub " x="487.5" y="233" text-anchor="middle" font-size="12.5">each Dense Block already adds its own &beta;-scaled skip internally &mdash; see zoom below</text>
+<g class="arch-op"><rect x="900" y="139.0" width="78" height="52" rx="7" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.4"/><text x="939.0" y="170.0" text-anchor="middle" font-size="13.5">&times;0.2</text></g>
+<g class="arch-op"><circle cx="1035" cy="165" r="23"/><text x="1035" y="170" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1105" y="120" width="190" height="90" rx="11" />
+<text class="title" x="1200.0" y="154.2" text-anchor="middle" font-size="15.5">RRDB output</text>
+<text class="sub" x="1200.0" y="177.7" text-anchor="middle" font-size="12.5">64ch, same shape as x</text>
+</g>
+<line x1="98" y1="165" x2="135" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="330" y1="165" x2="390" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="585" y1="165" x2="645" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="840" y1="165" x2="900" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="978" y1="165" x2="1010" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1060" y1="165" x2="1105" y2="165" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M75 142 L75 38 L1035 38 L1035 140" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="555.0" y="26" text-anchor="middle" font-size="13">outer skip, unscaled x, only &times;0.2 applied to the 3-block chain's output &mdash; RRDB(x) = x + 0.2&middot;RDB3(RDB2(RDB1(x)))</text>
+    </svg>
+    </div>
+
+    <p class="zoom-caption" id="sec-rdb-zoom">Zoom &mdash; inside one Dense Block (this is where the skip connections actually are)</p>
+    <p class="zoom-sub">5 convs; each one reads the concatenation of every earlier output in the block (the dashed "bus"), not just the previous layer</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1665 400" role="img">
+      <title>Inside one Dense Block: five convolutions with dense (concatenating) skip connections and a local residual</title>
+      <desc>Input x0 feeds conv1. Every subsequent conv reads the concatenation of x0 and all previous conv outputs, accumulated on a bus, growing by 32 channels per layer from 64 up to 192. Conv5 compresses back to 64 channels, is scaled by beta 0.2, and added to the unscaled original input x0 to form the Dense Block output.</desc>
+<g class="arch-node x0"><circle cx="75" cy="190" r="24"/><text x="75" y="195" font-size="14" text-anchor="middle">x0</text></g>
+<g class="arch-node">
+<rect x="170" y="144.0" width="132" height="92" rx="11" />
+<text class="title" x="236.0" y="179.0" text-anchor="middle" font-size="15.5">Conv1</text>
+<text class="sub" x="236.0" y="202.5" text-anchor="middle" font-size="12.5">64&rarr;32ch, LReLU</text>
+</g>
+<g class="arch-node">
+<rect x="392" y="144.0" width="132" height="92" rx="11" />
+<text class="title" x="458.0" y="179.0" text-anchor="middle" font-size="15.5">Conv2</text>
+<text class="sub" x="458.0" y="202.5" text-anchor="middle" font-size="12.5">96&rarr;32ch, LReLU</text>
+</g>
+<g class="arch-node">
+<rect x="614" y="144.0" width="132" height="92" rx="11" />
+<text class="title" x="680.0" y="179.0" text-anchor="middle" font-size="15.5">Conv3</text>
+<text class="sub" x="680.0" y="202.5" text-anchor="middle" font-size="12.5">128&rarr;32ch, LReLU</text>
+</g>
+<g class="arch-node">
+<rect x="836" y="144.0" width="132" height="92" rx="11" />
+<text class="title" x="902.0" y="179.0" text-anchor="middle" font-size="15.5">Conv4</text>
+<text class="sub" x="902.0" y="202.5" text-anchor="middle" font-size="12.5">160&rarr;32ch, LReLU</text>
+</g>
+<g class="arch-node">
+<rect x="1058" y="144.0" width="132" height="92" rx="11" />
+<text class="title" x="1124.0" y="179.0" text-anchor="middle" font-size="15.5">Conv5</text>
+<text class="sub" x="1124.0" y="202.5" text-anchor="middle" font-size="12.5">192&rarr;64ch, linear</text>
+</g>
+<g class="arch-op"><rect x="1258" y="162.0" width="92" height="56" rx="7" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.4"/><text x="1304.0" y="195.0" text-anchor="middle" font-size="13.5">&times;0.2</text></g>
+<g class="arch-op"><circle cx="1418" cy="190" r="24"/><text x="1418" y="195" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1480" y="145" width="165" height="90" rx="11" />
+<text class="title" x="1562.5" y="179.2" text-anchor="middle" font-size="15.5">RDB output</text>
+<text class="sub" x="1562.5" y="202.7" text-anchor="middle" font-size="12.5">64ch, same shape as x0</text>
+</g>
+<line x1="99" y1="190" x2="170" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="302" y1="190" x2="392" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="524" y1="190" x2="614" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="746" y1="190" x2="836" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="968" y1="190" x2="1058" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1190" y1="190" x2="1258" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1350" y1="190" x2="1392" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1444" y1="190" x2="1480" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M75 166 L75 42 L1418 42 L1418 164" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="746.5" y="28" text-anchor="middle" font-size="13">local residual: unscaled x0, added after conv5's output is scaled by &beta;=0.2 &mdash; RDB(x0) = x0 + 0.2&middot;conv5(&hellip;)</text>
+<path d="M75 314.0 L1058 314.0" class="arch-bus"/>
+<line x1="75" y1="214" x2="75" y2="314.0" class="arch-tap out"/>
+<line x1="236.0" y1="236.0" x2="236.0" y2="314.0" class="arch-tap out"/>
+<line x1="458.0" y1="236.0" x2="458.0" y2="314.0" class="arch-tap out"/>
+<line x1="680.0" y1="236.0" x2="680.0" y2="314.0" class="arch-tap out"/>
+<line x1="902.0" y1="236.0" x2="902.0" y2="314.0" class="arch-tap out"/>
+<line x1="410" y1="314.0" x2="410" y2="238.0" class="arch-tap" marker-end="url(#arch-arrow)"/>
+<line x1="632" y1="314.0" x2="632" y2="238.0" class="arch-tap" marker-end="url(#arch-arrow)"/>
+<line x1="854" y1="314.0" x2="854" y2="238.0" class="arch-tap" marker-end="url(#arch-arrow)"/>
+<line x1="1076" y1="314.0" x2="1076" y2="238.0" class="arch-tap" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="155.5" y="336.0" text-anchor="middle" font-size="12.5">64ch</text>
+<text class="sub " x="347.0" y="336.0" text-anchor="middle" font-size="12.5">96ch</text>
+<text class="sub " x="569.0" y="336.0" text-anchor="middle" font-size="12.5">128ch</text>
+<text class="sub " x="791.0" y="336.0" text-anchor="middle" font-size="12.5">160ch</text>
+<text class="sub " x="980.0" y="336.0" text-anchor="middle" font-size="12.5">192ch</text>
+<text class="sub " x="566.5" y="360.0" text-anchor="middle" font-size="13">concat bus &mdash; each conv's real input is everything to its left on this line, not just the previous box</text>
+    </svg>
+    </div>
+    <p class="arch-hint">this &beta;=0.2 pattern repeats 4&times; per RRDB (3 inner + 1 outer) &times; 23 RRDBs = 92 scaled residual adds in the trunk &mdash; see &sect;3a for why the scaling factor is needed at all</p>
+
+    <p class="zoom-caption" id="sec-upsample-zoom">Zoom &mdash; how the &times;4 upsampling actually happens</p>
+    <p class="zoom-sub">two identical stages of (nearest-neighbor 2&times; upsample &rarr; conv &rarr; LeakyReLU), not one big jump and not a transposed conv</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1700 266" role="img">
+      <title>Upsampling stage detail: two rounds of nearest-neighbor upsample plus convolution</title>
+      <desc>Trunk features at H by W resolution pass through nearest-neighbor 2x upsample, a 3x3 convolution, and LeakyReLU, taking resolution to 2H by 2W; this repeats once more to reach 4H by 4W, followed by an HR convolution and a final convolution down to 3 channels for the HR output.</desc>
+<g class="arch-node">
+<rect x="20" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="106.0" y="109.0" text-anchor="middle" font-size="15.5">Trunk features</text>
+<text class="sub" x="106.0" y="132.5" text-anchor="middle" font-size="12.5">64ch, H&times;W</text>
+</g>
+<g class="arch-node">
+<rect x="248" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="334.0" y="109.0" text-anchor="middle" font-size="15.5">Nearest &times;2</text>
+<text class="sub" x="334.0" y="132.5" text-anchor="middle" font-size="12.5">&rarr; 2H&times;2W</text>
+</g>
+<g class="arch-node">
+<rect x="476" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="562.0" y="109.0" text-anchor="middle" font-size="15.5">Conv 3&times;3</text>
+<text class="sub" x="562.0" y="132.5" text-anchor="middle" font-size="12.5">+ LReLU, 64ch</text>
+</g>
+<g class="arch-node">
+<rect x="704" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="790.0" y="109.0" text-anchor="middle" font-size="15.5">Nearest &times;2</text>
+<text class="sub" x="790.0" y="132.5" text-anchor="middle" font-size="12.5">&rarr; 4H&times;4W</text>
+</g>
+<g class="arch-node">
+<rect x="932" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="1018.0" y="109.0" text-anchor="middle" font-size="15.5">Conv 3&times;3</text>
+<text class="sub" x="1018.0" y="132.5" text-anchor="middle" font-size="12.5">+ LReLU, 64ch</text>
+</g>
+<g class="arch-node">
+<rect x="1160" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="1246.0" y="109.0" text-anchor="middle" font-size="15.5">HR Conv</text>
+<text class="sub" x="1246.0" y="132.5" text-anchor="middle" font-size="12.5">+ LReLU, 64ch</text>
+</g>
+<g class="arch-node">
+<rect x="1388" y="74.0" width="172" height="92" rx="11" />
+<text class="title" x="1474.0" y="109.0" text-anchor="middle" font-size="15.5">Last Conv</text>
+<text class="sub" x="1474.0" y="132.5" text-anchor="middle" font-size="12.5">64&rarr;3ch</text>
+</g>
+<line x1="192" y1="120" x2="248" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="420" y1="120" x2="476" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="648" y1="120" x2="704" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="876" y1="120" x2="932" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1104" y1="120" x2="1160" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1332" y1="120" x2="1388" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1560" y1="120" x2="1600" y2="120" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1615" y="125" text-anchor="start" font-size="14.5">HR out</text>
+<text class="sub" x="790.0" y="212.0" text-anchor="middle" font-size="13">
+<tspan x="790.0" dy="0">nearest-neighbor + conv over a transposed conv on purpose: transposed convs have overlapping</tspan>
+<tspan x="790.0" dy="18">kernel footprints that produce checkerboard artifacts, so this splits &quot;resize&quot; and &quot;fill in detail&quot; into two safer steps</tspan>
+</text>
+    </svg>
+    </div>
+
+    <p class="zoom-caption">Training-time only &mdash; discriminator &amp; loss</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1615 321" role="img">
+      <title>Training-time discriminator and loss path, left to right</title>
+      <desc>The generated fake HR image and the real ground-truth HR image both feed the U-Net discriminator with spectral normalization, which produces per-pixel realness maps; a relativistic average comparison turns these into an adversarial loss term, which combines with a direct L1 term and a perceptual term into the combined loss; a caveat notes this project's fine-tuning uses only the L1 term, bypassing the discriminator entirely via a direct L1 path.</desc>
+<g class="arch-node">
+<rect x="20" y="89.0" width="195" height="62" rx="11" />
+<text class="title" x="117.5" y="112.6" text-anchor="middle" font-size="15.5">Generated HR (fake)</text>
+<text class="sub" x="117.5" y="136.1" text-anchor="middle" font-size="12.5">= HR Output, above</text>
+</g>
+<g class="arch-node">
+<rect x="20" y="229.0" width="195" height="62" rx="11" />
+<text class="title" x="117.5" y="252.6" text-anchor="middle" font-size="15.5">Ground-truth HR (real)</text>
+<text class="sub" x="117.5" y="276.1" text-anchor="middle" font-size="12.5">from training pair</text>
+</g>
+<path d="M215 120.0 L285 190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M215 260.0 L285 190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="285" y1="190" x2="303" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<a class="arch-node linked" href="#sec-unet-zoom">
+<rect x="315" y="140.0" width="250" height="100" rx="11" />
+<text class="title" x="440.0" y="170.0" text-anchor="middle" font-size="15.5">U-Net Discriminator</text>
+<text class="sub" x="440.0" y="191.5" text-anchor="middle" font-size="12.5">+ Spectral Norm</text>
+<text class="sub" x="440.0" y="210.0" text-anchor="middle" font-size="12.5">per-pixel map &mdash; zoom below</text>
+</a>
+<a class="arch-node linked" href="#sec-ragan-zoom">
+<rect x="625" y="140.0" width="250" height="100" rx="11" />
+<text class="title" x="750.0" y="170.0" text-anchor="middle" font-size="15.5">Relativistic Compare</text>
+<text class="sub" x="750.0" y="191.5" text-anchor="middle" font-size="12.5">(RaGAN) real vs fake</text>
+<text class="sub" x="750.0" y="210.0" text-anchor="middle" font-size="12.5">relative &mdash; zoom below</text>
+</a>
+<line x1="565" y1="190" x2="625" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<a class="arch-node linked" href="#sec-2">
+<rect x="935" y="140.0" width="270" height="100" rx="11" />
+<text class="title" x="1070.0" y="170.0" text-anchor="middle" font-size="15.5">Combined Loss</text>
+<text class="sub" x="1070.0" y="191.5" text-anchor="middle" font-size="12.5">L1 + Perceptual (VGG)</text>
+<text class="sub" x="1070.0" y="210.0" text-anchor="middle" font-size="12.5">+ Adversarial</text>
+</a>
+<line x1="875" y1="190" x2="935" y2="190" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<a class="arch-node caveat" href="#sec-5">
+<rect x="1265" y="128.0" width="320" height="112" rx="11" />
+<text class="title" x="1425.0" y="161.6" text-anchor="middle" font-size="15.5">&#9888; This project's fine-tuning</text>
+<text class="sub" x="1425.0" y="183.1" text-anchor="middle" font-size="12.5">L1 only &mdash; discriminator/GAN</text>
+<text class="sub" x="1425.0" y="201.6" text-anchor="middle" font-size="12.5">loss inactive (&sect;05)</text>
+</a>
+<line x1="1205" y1="190" x2="1265" y2="172.08" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M117.5 89.0 L117.5 43.0 L1070.0 43.0 L1070.0 138.0" class="arch-edge dashed" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="593.75" y="29.0" text-anchor="middle" font-size="13">L1 (direct &mdash; bypasses the discriminator and RaGAN entirely)</text>
+    </svg>
+    </div>
+    <p class="arch-hint">teal = click to jump &middot; dashed = the L1 loss path (skips the discriminator entirely)</p>
+
+    <p class="zoom-caption" id="sec-unet-zoom">Zoom &mdash; inside the U-Net Discriminator</p>
+    <p class="zoom-sub">one continuous forward pass, left to right: down to a bottleneck, then back up &mdash; nested arcs are the 3 skip connections, added in on the way back up</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 2005 342" role="img">
+      <title>Inside the U-Net discriminator: one forward pass with three additive skip connections</title>
+      <desc>The HR image passes through conv0, then three strided spectral-norm convolutions that downsample it while increasing channels, reaching a 512-channel bottleneck at one-eighth resolution. Three stages of upsample-then-spectral-norm-convolution rebuild it back to full resolution; each stage's output has the matching encoder stage's output added to it directly, not concatenated. Two final spectral-norm convolutions plus one plain convolution produce a single-channel per-pixel realness logit map at the original resolution.</desc>
+<g class="arch-node">
+<rect x="20" y="208.0" width="130" height="104" rx="11" />
+<text class="title" x="85.0" y="247.5" text-anchor="middle" font-size="15.5">Input HR</text>
+<text class="sub" x="85.0" y="271.0" text-anchor="middle" font-size="12">real or fake, 3ch</text>
+</g>
+<g class="arch-node">
+<rect x="184" y="208.0" width="128" height="104" rx="11" />
+<text class="title" x="248.0" y="239.2" text-anchor="middle" font-size="15.5">Conv0</text>
+<text class="sub" x="248.0" y="260.7" text-anchor="middle" font-size="12">3&rarr;64, 3&times;3 s1</text>
+<text class="sub" x="248.0" y="278.7" text-anchor="middle" font-size="12">no SN &middot; H&times;W</text>
+</g>
+<g class="arch-node">
+<rect x="346" y="208.0" width="128" height="104" rx="11" />
+<text class="title" x="410.0" y="239.2" text-anchor="middle" font-size="15.5">Conv1 (SN)</text>
+<text class="sub" x="410.0" y="260.7" text-anchor="middle" font-size="12">64&rarr;128, 4&times;4 s2</text>
+<text class="sub" x="410.0" y="278.7" text-anchor="middle" font-size="12">H/2</text>
+</g>
+<g class="arch-node">
+<rect x="508" y="208.0" width="128" height="104" rx="11" />
+<text class="title" x="572.0" y="239.2" text-anchor="middle" font-size="15.5">Conv2 (SN)</text>
+<text class="sub" x="572.0" y="260.7" text-anchor="middle" font-size="12">128&rarr;256, 4&times;4 s2</text>
+<text class="sub" x="572.0" y="278.7" text-anchor="middle" font-size="12">H/4</text>
+</g>
+<g class="arch-node">
+<rect x="670" y="208.0" width="140" height="104" rx="11" />
+<text class="title" x="740.0" y="239.2" text-anchor="middle" font-size="15.5">Conv3 (SN)</text>
+<text class="sub" x="740.0" y="260.7" text-anchor="middle" font-size="12">256&rarr;512, 4&times;4 s2</text>
+<text class="sub" x="740.0" y="278.7" text-anchor="middle" font-size="12">H/8, bottleneck</text>
+</g>
+<g class="arch-node">
+<rect x="844" y="208.0" width="150" height="104" rx="11" />
+<text class="title" x="919.0" y="239.2" text-anchor="middle" font-size="15.5">Up&times;2 + Conv4</text>
+<text class="sub" x="919.0" y="260.7" text-anchor="middle" font-size="12">(SN) 512&rarr;256</text>
+<text class="sub" x="919.0" y="278.7" text-anchor="middle" font-size="12">back to H/4</text>
+</g>
+<g class="arch-op"><circle cx="1051.0" cy="260" r="23.0"/><text x="1051.0" y="265" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1108" y="208.0" width="150" height="104" rx="11" />
+<text class="title" x="1183.0" y="239.2" text-anchor="middle" font-size="15.5">Up&times;2 + Conv5</text>
+<text class="sub" x="1183.0" y="260.7" text-anchor="middle" font-size="12">(SN) 256&rarr;128</text>
+<text class="sub" x="1183.0" y="278.7" text-anchor="middle" font-size="12">back to H/2</text>
+</g>
+<g class="arch-op"><circle cx="1315.0" cy="260" r="23.0"/><text x="1315.0" y="265" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1372" y="208.0" width="150" height="104" rx="11" />
+<text class="title" x="1447.0" y="239.2" text-anchor="middle" font-size="15.5">Up&times;2 + Conv6</text>
+<text class="sub" x="1447.0" y="260.7" text-anchor="middle" font-size="12">(SN) 128&rarr;64</text>
+<text class="sub" x="1447.0" y="278.7" text-anchor="middle" font-size="12">back to H&times;W</text>
+</g>
+<g class="arch-op"><circle cx="1579.0" cy="260" r="23.0"/><text x="1579.0" y="265" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1636" y="208.0" width="160" height="104" rx="11" />
+<text class="title" x="1716.0" y="239.2" text-anchor="middle" font-size="15.5">Conv7, 8, 9</text>
+<text class="sub" x="1716.0" y="260.7" text-anchor="middle" font-size="12">64&rarr;64&rarr;1, SN on 7&amp;8</text>
+<text class="sub" x="1716.0" y="278.7" text-anchor="middle" font-size="12">9 is plain conv</text>
+</g>
+<g class="arch-node">
+<rect x="1830" y="208.0" width="145" height="104" rx="11" />
+<text class="title" x="1902.5" y="247.5" text-anchor="middle" font-size="15.5">Realness map</text>
+<text class="sub" x="1902.5" y="271.0" text-anchor="middle" font-size="12">1&times;H&times;W logits</text>
+</g>
+<line x1="150" y1="260" x2="184" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="312" y1="260" x2="346" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="474" y1="260" x2="508" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="636" y1="260" x2="670" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="810" y1="260" x2="844" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="994" y1="260" x2="1028.0" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1074.0" y1="260" x2="1108" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1258" y1="260" x2="1292.0" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1338.0" y1="260" x2="1372" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1522" y1="260" x2="1556.0" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1602.0" y1="260" x2="1636" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1796" y1="260" x2="1830" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M572.0 208.0 L572.0 154.0 L1051.0 154.0 L1051.0 185.0" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="811.5" y="144.0" text-anchor="middle" font-size="12.5">+= Conv2 output (256ch, H/4)</text>
+<path d="M410.0 208.0 L410.0 108.0 L1315.0 108.0 L1315.0 185.0" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="862.5" y="98.0" text-anchor="middle" font-size="12.5">+= Conv1 output (128ch, H/2)</text>
+<path d="M248.0 208.0 L248.0 62.0 L1579.0 62.0 L1579.0 185.0" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="913.5" y="52.0" text-anchor="middle" font-size="12.5">+= Conv0 output (64ch, H&times;W) &mdash; additive, not concatenated (unlike the generator's dense blocks)</text>
+    </svg>
+    </div>
+    <p class="arch-hint">every conv here has spectral normalization applied to its weights except conv0 (first) and conv9 (last) &mdash; SN constrains Lipschitz continuity, keeping training stable at this depth (&sect;4c). Output is a full H&times;W map of raw logits: one realness verdict per pixel, not one verdict for the whole image.</p>
+
+    <p class="zoom-caption" id="sec-ragan-zoom">Zoom &mdash; how "relativistic average" actually computes a loss</p>
+    <p class="zoom-sub">not "is this real?" in isolation &mdash; "is real more realistic than the average fake, and vice versa?"</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1257 574" role="img">
+      <title>Relativistic average GAN: how the discriminator's real and fake scores combine into a loss</title>
+      <desc>The discriminator's raw score for the real image, minus the average of its raw scores for fake images, passes through a sigmoid to produce the probability that real is more realistic than the average fake. Symmetrically, the fake score minus the average real score, through a sigmoid, gives the probability that fake is more realistic than the average real. The discriminator loss pushes the first toward one and the second toward zero; the generator's adversarial loss pushes them the opposite way, so gradient keeps flowing even once the discriminator gets confident.</desc>
+<g class="arch-node">
+<rect x="20" y="51.0" width="210" height="78" rx="11" />
+<text class="title" x="125.0" y="80.6" text-anchor="middle" font-size="15.5">C(x_real)</text>
+<text class="sub" x="125.0" y="104.1" text-anchor="middle" font-size="12.5">raw logits, from U-Net</text>
+</g>
+<g class="arch-node">
+<rect x="20" y="221.0" width="210" height="78" rx="11" />
+<text class="title" x="125.0" y="250.6" text-anchor="middle" font-size="15.5">C(x_fake)</text>
+<text class="sub" x="125.0" y="274.1" text-anchor="middle" font-size="12.5">raw logits, from U-Net</text>
+</g>
+<g class="arch-op"><circle cx="310" cy="90" r="22"/><text x="310" y="95" font-size="13">&minus;</text></g>
+<g class="arch-op"><circle cx="310" cy="260" r="22"/><text x="310" y="265" font-size="13">&minus;</text></g>
+<line x1="230" y1="90" x2="286" y2="90" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="230" y1="260" x2="286" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M125.0 129.0 C 125.0 165.0, 220 135.0, 284 104" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="195.0" y="147.0" text-anchor="start" font-size="12.5">avg &mdash; E[C(x_fake)]</text>
+<path d="M125.0 221.0 C 125.0 185.0, 220 215.0, 284 246" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="195.0" y="217.0" text-anchor="start" font-size="12.5">avg &mdash; E[C(x_real)]</text>
+<g class="arch-node">
+<rect x="387" y="54.0" width="130" height="72" rx="11" />
+<text class="title" x="452.0" y="95.6" text-anchor="middle" font-size="15.5">Sigmoid</text>
+</g>
+<g class="arch-node">
+<rect x="387" y="224.0" width="130" height="72" rx="11" />
+<text class="title" x="452.0" y="265.6" text-anchor="middle" font-size="15.5">Sigmoid</text>
+</g>
+<line x1="332" y1="90" x2="387" y2="90" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="332" y1="260" x2="387" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<g class="arch-node">
+<rect x="577" y="44.0" width="360" height="92" rx="11" />
+<text class="title" x="757.0" y="71.6" text-anchor="middle" font-size="15.5">D_Ra(x_real, x_fake)</text>
+<text class="sub" x="757.0" y="93.1" text-anchor="middle" font-size="12.5">target &rarr; 1 for D</text>
+<text class="sub" x="757.0" y="111.6" text-anchor="middle" font-size="12.5">G wants this LOW</text>
+</g>
+<g class="arch-node">
+<rect x="577" y="214.0" width="360" height="92" rx="11" />
+<text class="title" x="757.0" y="241.6" text-anchor="middle" font-size="15.5">D_Ra(x_fake, x_real)</text>
+<text class="sub" x="757.0" y="263.1" text-anchor="middle" font-size="12.5">target &rarr; 0 for D</text>
+<text class="sub" x="757.0" y="281.6" text-anchor="middle" font-size="12.5">G wants this HIGH</text>
+</g>
+<line x1="517" y1="90" x2="577" y2="90" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="517" y1="260" x2="577" y2="260" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<g class="arch-op"><circle cx="1007" cy="175.0" r="7"/></g>
+<path d="M937 90 L1007 175.0" class="arch-edge"/>
+<path d="M937 260 L1007 175.0" class="arch-edge"/>
+<g class="arch-node">
+<rect x="557" y="380" width="300" height="130" rx="11" />
+<text class="title" x="707.0" y="419.0" text-anchor="middle" font-size="15.5">Discriminator loss</text>
+<text class="sub" x="707.0" y="440.5" text-anchor="middle" font-size="12">&minus;log D_Ra(r,f) &minus; log(1&minus;D_Ra(f,r))</text>
+<text class="sub" x="707.0" y="458.5" text-anchor="middle" font-size="12">pushes the real/fake gap UP</text>
+</g>
+<g class="arch-node">
+<rect x="927" y="380" width="300" height="130" rx="11" />
+<text class="title" x="1077.0" y="419.0" text-anchor="middle" font-size="15.5">Generator adversarial loss</text>
+<text class="sub" x="1077.0" y="440.5" text-anchor="middle" font-size="12">&minus;log(1&minus;D_Ra(r,f)) &minus; log D_Ra(f,r)</text>
+<text class="sub" x="1077.0" y="458.5" text-anchor="middle" font-size="12">pushes the SAME gap DOWN</text>
+</g>
+<path d="M1007 182.0 L707.0 380" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M1007 182.0 L1077.0 380" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub" x="892.0" y="544" text-anchor="middle" font-size="12.5">
+<tspan x="892.0" dy="0">generator loss feeds into Combined Loss, above &mdash; this opposite pull</tspan>
+<tspan x="892.0" dy="17">on the same two numbers keeps gradient flowing even once D is confident</tspan>
+</text>
+    </svg>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">01</span>The lineage, in one paragraph</h2>
+    </div>
+    <p class="lead">SRGAN established that pixel-loss-only training (MSE) produces blurry, PSNR-optimized-but-unconvincing output, and fixed it by adding adversarial + perceptual loss &mdash; at the cost of lower PSNR. ESRGAN kept that idea and rebuilt everything around it: a new generator backbone (RRDB) capable of going much deeper without instability, a sharper discriminator (relativistic), and a better-informed perceptual loss (pre-activation VGG features). Real-ESRGAN then made a very specific bet: the generator from ESRGAN was already good enough &mdash; what was actually broken was the training data (synthetic bicubic degradation doesn't look like real-world degradation) and the discriminator's resolution (a single whole-image verdict is too coarse once degradation severity varies locally). So Real-ESRGAN changes the data pipeline and the judge, and leaves the generator's core block untouched.</p>
+    <p>That last point matters a lot for what follows: <strong>the exact mechanism that causes hallucination-type behavior in Real-ESRGAN was already fully decided by ESRGAN in 2018.</strong> Real-ESRGAN doesn't introduce a new hallucination mechanism &mdash; it changes how often and where the existing one gets triggered.</p>
+  </section>
+
+  <section id="sec-2">
+    <div class="section-head">
+      <h2><span class="num">02</span>SRGAN (2017) &mdash; where the core tension starts</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+    <p>Pre-2017 SR models (e.g. SRCNN) trained with pixel-wise MSE loss, which is mathematically identical (up to a log transform) to maximizing PSNR. This produces the highest possible PSNR &mdash; and consistently blurry, over-smoothed output. SRGAN's fix: add a content loss computed in VGG feature space, plus an adversarial loss from a discriminator, on top of a deep residual generator (SRResNet &mdash; since fully replaced by RRDB, not worth studying in detail).</p>
+
+    <h3>Why MSE-only training is forced into blur</h3>
+    <p>The value that minimizes <em>expected</em> squared error against a distribution is that distribution's mean. This isn't a training artifact &mdash; it's what the loss function is mathematically defined to produce.</p>
+    <div class="card">
+      <div class="card-label">Worked example</div>
+      <div class="card-title">One ambiguous patch, two equally likely outcomes</div>
+      <p>Suppose one ambiguous LR patch corresponds, across the training set, to two equally likely true HR pixel values &mdash; 40 (shadow) and 200 (sunlit), each with probability 0.5. The MSE-optimal prediction <em>a</em> minimizes E[(X&minus;a)&sup2;] = 0.5(40&minus;a)&sup2; + 0.5(200&minus;a)&sup2;. Setting the derivative to zero gives a = 0.5(40) + 0.5(200) = <strong>120</strong> &mdash; a value that never occurs in the real data, but has lower expected squared error than either real outcome because it's equidistant from both.</p>
+    </div>
+    <p>Multiply this across every ambiguous patch in an image and you get exactly the blurry, under-textured output SRGAN was built to fix. PSNR is not an independent judge of quality here &mdash; it's measuring the same quantity the MSE loss was directly optimizing, so an MSE-trained model scoring well on PSNR is not a coincidence. Any other model (adversarially trained, or a diffusion model sampling stochastically) produces one specific <em>sample</em> rather than the mean, and any single sample will almost always score worse on squared error against one specific ground-truth crop than the mean does &mdash; even when it looks far more realistic.</p>
+    <p><strong>Relation to hallucination:</strong> this is the origin of the <strong>under-invention pole</strong> (Section 6) &mdash; output ambiguity resolved by averaging it away. It's the opposite failure mode from hallucination, but comes from the exact same root cause: multiple plausible HR patches mapping to one LR input.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">03</span>ESRGAN (2018) &mdash; the architecture Real-ESRGAN still runs today</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+    <p>Three changes, all aimed at pushing harder against the blur from Section 2, plus one deployment convenience.</p>
+
+    <h3 id="sec-3a">3a &mdash; RRDB: dense connections + residual scaling, no batch norm</h3>
+    <p>Each conv layer inside a dense block receives the concatenation of every earlier layer's output in that block, so low-level detail and gradients have a direct path to every later layer without having to survive re-derivation through many stacked transformations. This is what lets the network go as deep as 23 RRDB blocks (each with 3 nested dense blocks) without gradients or fine detail degrading on the way through.</p>
+    <p>Batch normalization is removed entirely. BN normalizes each batch using that batch's statistics at train time, then substitutes a running average at test time &mdash; for restoration, this creates a mismatch whenever a real test image's local statistics differ from the training-time average, showing up as visible banding/blob artifacts.</p>
+    <p>Removing BN without a replacement creates a different risk: with residual branches added at full strength and no normalization between blocks, signal magnitude can compound across the stack. If each block's contribution has roughly unit standard deviation, accumulated variance grows like &sigma;&radic;N. For N = 23 blocks: &radic;23 &asymp; 4.8&times; the original signal scale flowing into unnormalized layers &mdash; a direct path to unstable training. <strong>The fix is residual scaling</strong>: multiply each block's output by a fixed constant &beta; = 0.2 before adding it back. Recomputed: 0.2 &times; &radic;23 &asymp; 0.96&times; &mdash; almost exactly back to the original scale, using pure arithmetic instead of a data-dependent normalization step.</p>
+
+    <h3 id="sec-3b">3b &mdash; Relativistic average discriminator (RaGAN)</h3>
+    <p>A standard discriminator predicts "is this real or fake" in isolation. Once the generator gets good, its gradient on real images saturates &mdash; there's nothing left to learn from that side, and training stalls. RaGAN instead predicts something relative: is the real HR image more realistic than the fake one, on average, and vice versa. This keeps producing a useful gradient throughout training, which is what let ESRGAN push texture sharpness further than SRGAN could.</p>
+
+    <h3>3c &mdash; Perceptual loss on pre-activation VGG features</h3>
+    <p>SRGAN computed its VGG content loss after the ReLU activation. Post-activation feature maps are sparse &mdash; roughly 11% of neurons are active at any given layer, since ReLU zeroes out everything negative. That throws away most of the signal a perceptual loss needs, especially for brightness/contrast matching. Pre-activation features are free to compute and strictly more informative.</p>
+
+    <h3>3d &mdash; Network interpolation</h3>
+    <p>Rather than training one PSNR-oriented and one GAN-oriented model and picking one, ESRGAN interpolates the <em>weights</em> of the two networks directly &mdash; a continuous dial between sharp-but-less-faithful and faithful-but-blurrier, with no retraining.</p>
+
+    <p><strong>Relation to hallucination:</strong> 3b and 3c both make the same knob SRGAN introduced <em>more powerful</em>. This is the origin of the <strong>over-invention pole</strong>: to look convincing, the generator has to commit to one specific, detailed realization, whether or not it's factually correct. Hallucination risk in the ESRGAN lineage is not an accidental side effect &mdash; it's the deliberate, load-bearing cost of the fix for Section 2's blur.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">04</span>Real-ESRGAN (2021) &mdash; same generator, different data, sharper judge</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+
+    <h3 id="sec-4a">4a &mdash; Pixel-unshuffle (efficiency only)</h3>
+    <p>Before the LR image reaches the RRDB trunk, it passes through a pixel-unshuffle operation that trades spatial resolution for channel depth &mdash; a pure compute/memory optimization that doesn't change what the trunk is capable of.</p>
+
+    <h3>4b &mdash; High-order (second-order) degradation model</h3>
+    <p>Real-ESRGAN's actual headline contribution. Rather than one clean blur&rarr;downsample&rarr;noise&rarr;JPEG pass, the same process is applied <em>twice in sequence</em> with independently randomized parameters, producing LR training images that statistically resemble real-world degraded images much more closely. Sinc filters are added specifically to reproduce ringing and overshoot artifacts &mdash; a signature of real sharpening/compression that the classical degradation model never produces, meaning a model trained without them has never seen that artifact type during training.</p>
+
+    <h3 id="sec-4c">4c &mdash; U-Net discriminator + spectral normalization</h3>
+    <p>ESRGAN's VGG-style discriminator collapses judgment into one scalar per image. Once training images carry much wider <em>local</em> degradation severity, that's too coarse. Real-ESRGAN's U-Net discriminator outputs a per-pixel realness map instead, giving the generator spatially localized feedback. This upgrade, combined with the harder task, increases training instability &mdash; hence spectral normalization, which constrains the discriminator's Lipschitz continuity and keeps gradients well-behaved.</p>
+
+    <p><strong>Relation to hallucination:</strong> the generator's decision-theoretic behavior under ambiguity (Sections 2&ndash;3) is completely unchanged &mdash; same RRDB block, same loss family. What changes is (i) what counts as "ambiguous": a much wider range of real-world content now falls into the genuinely-uncertain zone, since training covers a much wider degradation distribution, and (ii) the discriminator is sharper and spatially local, so wherever the adversarial term dominates, invented detail is guided with per-pixel precision. Real-ESRGAN didn't change <em>how</em> hallucination happens &mdash; it changed how often it gets triggered and how locally precise it looks when it does.</p>
+  </section>
+
+  <section id="sec-5">
+    <div class="section-head">
+      <h2><span class="num">05</span>Resolved &mdash; what your own fine-tuning table already answers</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded &mdash; confirmed by report &sect;07</span>
+    </div>
+    <p>I originally flagged this as an open question &mdash; but Section 07's own fine-tuning results table already answers it: every ESRGAN row lists <strong>L1</strong> as its loss type, and every Diffusion row lists <strong>MSE</strong>. No adversarial or perceptual loss term is active during fine-tuning, for either model.</p>
+    <div class="card">
+      <div class="card-label">Consequence &mdash; ESRGAN</div>
+      <div class="card-title">All 4 fine-tuned strategies sit purely on the under-invention pole</div>
+      <p>ESRGAN's over-invention capacity comes entirely from its discriminator/adversarial loss (Section 3). With fine-tuning using L1 only, none of the four fine-tuned checkpoints (full, partial, lora, head_only) have any active mechanism for hallucination in the SRGAN/ESRGAN sense. Whatever artifacts appear in the fine-tuned gallery &mdash; the farmland striping darkening under lora, the color shift under head_only &mdash; are a different mechanism: fine-tuning-induced distribution shift or undertrained partial capacity, not adversarial hallucination. Continued L1-only updates on top of a GAN-trained checkpoint could plausibly pull it further toward blur, not further toward invention &mdash; worth checking directly if you want to confirm.</p>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-label">Consequence &mdash; Diffusion</div>
+      <div class="card-title">Over-invention capacity survives fine-tuning, unlike ESRGAN's</div>
+      <p>Diffusion's over-invention pole doesn't come from an adversarial loss term at all &mdash; it comes from the stochastic reverse-sampling process itself, which is architecturally present regardless of what loss trained the noise predictor. MSE-only fine-tuning trains the noise-prediction network, but doesn't remove the sampling mechanism that lets it commit to one specific plausible realization per draw. So the diffusion strategies keep their hallucination capacity through fine-tuning; the ESRGAN strategies effectively lose theirs.</p>
+    </div>
+    <p>This is worth a direct correction in &sect;08 of the main report: the fine-tuned ESRGAN "hallucination analysis" subsection is very likely describing under-invention effects (distribution shift, capacity starvation) rather than hallucination proper, and the label should probably change.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">06</span>The unifying framework</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+    <p>Both "hallucination" (inventing plausible-but-wrong content) and "under-texturing" (blurring away real content) are the same underlying event &mdash; a model resolving genuine output ambiguity &mdash; expressed in opposite directions depending on which loss terms and mechanisms are active.</p>
+    <table>
+      <tr><th></th><th>Under-invention pole</th><th>Over-invention pole (hallucination proper)</th></tr>
+      <tr><td>Mechanism</td><td>Loss-optimal output is the statistical average across all plausible outcomes</td><td>Model must commit to one specific, convincing realization</td></tr>
+      <tr><td>Responsible term</td><td>L1 / L2 pixel loss (SRGAN's starting point, still Real-ESRGAN's base term)</td><td>Adversarial + perceptual loss (SRGAN/ESRGAN); in diffusion, the stochastic sampling process itself</td></tr>
+      <tr><td>Tell in the metrics</td><td>Both SSIM <em>and</em> PSNR suffer together</td><td>LPIPS/SSIM can improve while PSNR drops</td></tr>
+      <tr><td>Example, this project</td><td class="highlight">Chaparral under-texturing; farmland comb-filter striping (SSIM 0.361 &amp; PSNR 21.62 both weak)</td><td class="highlight">dense_residential_01's invented object (diffusion, zero-shot only &mdash; see &sect;05)</td></tr>
+    </table>
+    <p>This also fully resolves the farmland gap from the main report review: farmland's periodic field-boundary lines sit near the LR grid's sampling limit, creating the same <em>kind</em> of ambiguity as chaparral's texture &mdash; just from aliasing instead of semantics. ESRGAN's L1 term averages across plausible phases (the striping artifact, hurting both metrics); the diffusion model's stochastic sampling commits to one specific phase per draw, and on this scene, landed closer to the true one.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">07</span>Sources</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded</span>
+    </div>
+    <div class="ref"><span class="ref-year">2017</span> &nbsp; Ledig et al. &mdash; Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network (SRGAN). CVPR.</div>
+    <div class="ref"><span class="ref-year">2018</span> &nbsp; Wang et al. &mdash; ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks. ECCV Workshops.</div>
+    <div class="ref"><span class="ref-year">2021</span> &nbsp; Wang et al. &mdash; Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data. ICCVW.</div>
+  </section>
+
+</div>
+
+<footer>project 8 &middot; companion deep-dive &middot; teal = grounded in the cited papers or the main report's own data</footer>
+
+</body>
+</html>

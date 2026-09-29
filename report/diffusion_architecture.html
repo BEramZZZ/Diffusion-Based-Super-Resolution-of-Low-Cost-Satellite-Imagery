@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diffusion (SD x4 Upscaler), End to End -- WORK IN PROGRESS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0D12;
+    --surface: #12161E;
+    --surface-2: #171C26;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.16);
+    --text: #EDEEF0;
+    --text-secondary: #B4BAC6;
+    --text-muted: #6B7280;
+    --teal: #2DD4BF;
+    --teal-dim: rgba(45,212,191,0.12);
+    --coral: #FF6B4A;
+    --coral-dim: rgba(255,107,74,0.12);
+    --amber: #F0B429;
+    --amber-dim: rgba(240,180,41,0.14);
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.7;
+    font-size: 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 120px; }
+
+  .hero {
+    padding: 100px 24px 60px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(45,212,191,0.06), transparent 60%);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 20px;
+  }
+  h1.title {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: clamp(28px, 4vw, 42px);
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    max-width: 780px;
+    margin: 0 auto 16px;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 17px;
+    max-width: 620px;
+    margin: 0 auto 28px;
+  }
+  .byline {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  h2 .num { color: var(--teal); margin-right: 10px; }
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 20px;
+    margin: 32px 0 14px;
+  }
+  p { color: var(--text-secondary); margin-bottom: 14px; }
+  p.lead { color: var(--text); font-size: 17px; }
+  strong { color: var(--text); font-weight: 600; }
+  code { font-family: var(--mono); background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  ul { margin: 0 0 16px 20px; color: var(--text-secondary); }
+  li { margin-bottom: 8px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    padding: 5px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .badge-grounded { background: var(--teal-dim); color: var(--teal); border: 1px solid rgba(45,212,191,0.3); }
+  .badge-sourced { background: transparent; color: var(--teal); border: 1px solid rgba(45,212,191,0.3); }
+  .badge-sourced[href] { text-decoration: none; cursor: pointer; }
+  .badge-sourced[href]:hover { background: var(--teal-dim); }
+  .badge-unverified { background: var(--coral-dim); color: var(--coral); border: 1px solid rgba(255,107,74,0.3); }
+  .tag-unverified { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--coral); background: var(--coral-dim); border: 1px solid rgba(255,107,74,0.3); border-radius: 3px; padding: 0 6px; margin-right: 4px; vertical-align: 1px; }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  @media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card .card-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+  .card .card-title { font-weight: 600; font-size: 16px; margin-bottom: 8px; }
+  .card p { font-size: 14px; margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  td.highlight { color: var(--teal); }
+  td.todo { color: var(--coral); }
+  td .cell-note { display: block; font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+  .risk-note { display: flex; gap: 10px; align-items: flex-start; background: var(--amber-dim); border: 1px dashed var(--amber); border-radius: 8px; padding: 12px 16px; margin: 6px 0 26px; }
+  .risk-note .risk-icon { flex-shrink: 0; font-size: 15px; line-height: 1.5; }
+  .risk-note p { color: var(--text-secondary); font-size: 13.5px; margin: 0; line-height: 1.55; }
+  .risk-note strong { color: var(--amber); }
+
+  .ref { font-size: 14px; color: var(--text-secondary); padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .ref:last-child { border-bottom: none; }
+  .ref .ref-year { color: var(--teal); font-family: var(--mono); font-size: 12px; }
+
+  footer { text-align: center; padding: 48px 24px; color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 28px;
+    padding: 11px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--teal);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .nav-link:hover { background: var(--surface-2); border-color: var(--teal); }
+
+  section[id], h3[id] { scroll-margin-top: 24px; }
+  .arch-diagram { width: 100%; height: auto; margin: 8px 0 4px; }
+  .arch-diagram text { font-family: var(--mono); fill: var(--text); }
+  .arch-diagram .sub { fill: var(--text-muted); font-size: 10.5px; }
+  .arch-node rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; }
+  .arch-node.linked rect { stroke: var(--teal); stroke-width: 1.3; fill: var(--teal-dim); cursor: pointer; }
+  .arch-node.linked:hover rect { fill: rgba(45,212,191,0.22); stroke-width: 1.8; }
+  .arch-node.linked text.title { fill: var(--teal); }
+  .arch-node.caveat rect { stroke: var(--coral); stroke-width: 1.3; fill: var(--coral-dim); }
+  .arch-node.caveat text.title { fill: var(--coral); }
+  .arch-node.note rect { stroke: var(--border-strong); stroke-width: 1.3; stroke-dasharray: 5 4; fill: var(--surface); }
+  .arch-edge { stroke: var(--border-strong); stroke-width: 1.3; fill: none; }
+  .arch-edge.dashed { stroke-dasharray: 4 3; opacity: 0.7; }
+  .arch-hint { font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px; }
+  .zoom-caption { font-family: var(--mono); font-size: 12px; color: var(--teal); text-align: center; margin: 40px 0 2px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .zoom-sub { font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-align: center; margin-bottom: 14px; }
+  .arch-op circle { fill: var(--teal-dim); stroke: var(--teal); stroke-width: 1.3; }
+  .arch-op text { fill: var(--teal); font-size: 12px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+  .arch-node.x0 circle { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.3; }
+  .arch-node.x0 text { text-anchor: middle; dominant-baseline: middle; font-size: 11px; }
+  .arch-bus { stroke: var(--text-muted); stroke-width: 1.3; stroke-dasharray: 3 3; opacity: 0.55; fill: none; }
+  .arch-tap { stroke: var(--text-muted); stroke-width: 1.1; opacity: 0.55; fill: none; }
+  .arch-tap.out { stroke: var(--teal); opacity: 0.6; }
+  .bus-label { font-family: var(--mono); font-size: 9.5px; fill: var(--text-muted); text-anchor: middle; }
+
+
+  .diagram-bleed {
+    width: min(1600px, 94vw);
+    margin: 14px auto 6px;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .arch-diagram { width: 100%; height: auto; display: block; }
+  .arch-diagram text { font-family: var(--mono); fill: var(--text); }
+  .arch-diagram .sub { fill: var(--text-muted); }
+  .arch-diagram text.title { font-weight: 600; }
+  .arch-node rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; }
+  .arch-node.linked rect { stroke: var(--teal); stroke-width: 1.6; fill: var(--teal-dim); cursor: pointer; }
+  .arch-node.linked:hover rect { fill: rgba(45,212,191,0.22); stroke-width: 2; }
+  .arch-node.linked text.title { fill: var(--teal); }
+  .arch-node.caveat rect { stroke: var(--coral); stroke-width: 1.6; fill: var(--coral-dim); }
+  .arch-node.caveat text.title { fill: var(--coral); }
+  .arch-node.note rect { stroke: var(--border-strong); stroke-width: 1.6; stroke-dasharray: 5 4; fill: var(--surface); }
+  .arch-edge { stroke: var(--border-strong); stroke-width: 1.6; fill: none; }
+  .arch-edge.dashed { stroke-dasharray: 5 4; opacity: 0.75; }
+  .arch-hint { font-family: var(--mono); font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 10px; }
+  .zoom-caption { font-family: var(--mono); font-size: 13.5px; color: var(--teal); text-align: center; margin: 52px 0 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .zoom-sub { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); text-align: center; margin-bottom: 10px; }
+  .arch-op circle { fill: var(--teal-dim); stroke: var(--teal); stroke-width: 1.6; }
+  .arch-op text { fill: var(--teal); font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+  .bus-label { font-family: var(--mono); fill: var(--text-muted); text-anchor: middle; }
+  .wip-banner { max-width: 860px; margin: 0 auto; padding: 14px 24px; background: var(--coral-dim); border: 1px solid rgba(255,107,74,0.3); border-radius: 8px; color: var(--coral); font-family: var(--mono); font-size: 13px; text-align: center; }
+  .wip-wrap { padding: 24px 24px 0; }
+  @media (max-width: 700px) { .diagram-bleed { width: 98vw; } }
+
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">Project 8 &middot; Companion Deep-Dive &middot; DRAFT / IN PROGRESS</div>
+  <h1 class="title">Diffusion (SD x4 Upscaler), End to End<br>Architecture &amp; Hallucination Risk</h1>
+  <p class="subtitle">Companion to the Real-ESRGAN deep dive, for the Stable Diffusion x4 Upscaler side of Project 8. Four diagrams are built so far; a fine-tuning diagram is still to come.</p>
+  <div class="byline">Ramzy &middot; USTHB, Algiers</div>
+</div>
+
+<div class="wip-wrap">
+  <div class="wip-banner">&#9888; Work in progress &mdash; top-level pipeline, UNet zoom, sampler-loop zoom, training-loss zoom, sources, and a run-settings table (from models.py defaults) are built. Still no fine-tuning diagram; claims tagged Unverified have not been checked yet.</div>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">00</span>Full architecture map (partial)</h2>
+      <span class="badge badge-grounded"><span class="badge-dot"></span>Grounded &mdash; what was run, per models.py</span>
+      <a class="badge badge-sourced" href="#sec-sources"><span class="badge-dot"></span>Sourced &mdash; architecture internals, see Sources &darr;</a>
+    </div>
+    <p>Denoising latents are initialised at the LR image's own pixel resolution (not the usual 8&times;-downsampled latent elsewhere in Stable Diffusion); the VAE decoder performs the actual 4&times; upscale. This is the top-level forward pass / sampling loop.</p>
+
+    <h3>What was actually run</h3>
+    <p>Every diagram below shows the mechanism, not a specific run. This table is the specific run &mdash; the values that turn "the model can invent detail" into "here is how much room this particular call gave it to do so."</p>
+    <table>
+      <thead>
+        <tr><th>Setting</th><th>Value</th><th>Source</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Model ID</td><td class="highlight">stabilityai/stable-diffusion-x4-upscaler</td><td>model card, see Sources</td></tr>
+        <tr><td>Sampler</td><td class="highlight">DDIM, &eta;=0</td><td>the checkpoint's scheduler config (DDIM); &eta;=0.0 is the diffusers default &mdash; neither is set in models.py</td></tr>
+        <tr><td>Steps</td><td class="highlight">30</td><td>models.py, <code>DiffusionUpscaler.num_inference_steps</code> (the diffusers default would be 75)</td></tr>
+        <tr><td>Prompt</td><td class="highlight">&ldquo;a high resolution aerial satellite photograph, sharp detail, realistic terrain&rdquo;<span class="cell-note"><code>DEFAULT_PROMPT</code> constant in models.py; a caller can override it via <code>load_diffusion_upscaler(prompt=...)</code></span></td><td>models.py</td></tr>
+        <tr><td>Precision</td><td class="highlight">fp16 (<code>variant="fp16"</code>) on CUDA; fp32 fallback on CPU<span class="cell-note">torch_dtype/variant set conditionally on torch.cuda.is_available()</span></td><td>models.py, <code>load_diffusion_upscaler</code></td></tr>
+        <tr><td>Guidance scale (w)</td><td class="highlight">9.0</td><td>not passed in <code>run_diffusion_upscaler</code> (models.py) &rarr; falls through to the diffusers default<span class="cell-note">matches the pipeline's <code>__call__</code> default in the diffusers source; re-check on your installed version with <code>inspect.signature(pipe.__call__)</code></span></td></tr>
+        <tr><td>Noise level</td><td class="highlight">20</td><td>not passed in <code>run_diffusion_upscaler</code> (models.py) &rarr; falls through to the diffusers default<span class="cell-note">matches the pipeline's <code>__call__</code> default in the diffusers source; re-check on your installed version with <code>inspect.signature(pipe.__call__)</code></span></td></tr>
+        <tr><td>Negative prompt</td><td class="highlight">none</td><td>not passed in <code>run_diffusion_upscaler</code> (models.py) &rarr; diffusers default, so the unconditional guidance pass uses an empty prompt</td></tr>
+        <tr><td>Seed / generator</td><td class="highlight">not set</td><td><code>run_diffusion_upscaler</code> passes no generator, so z<sub>T</sub> and the LR-augmentation noise are fresh random draws on every call<span class="cell-note">each run is one sample from p(HR|LR), not a reproducible output</span></td></tr>
+        <tr><td>diffusers version</td><td class="todo">to fill in</td><td>not recorded in models.py<span class="cell-note">run <code>python -c "import diffusers; print(diffusers.__version__)"</code> and paste the result here</span></td></tr>
+      </tbody>
+    </table>
+
+    <defs id="shared-defs" style="display:none"></defs>
+
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1695 400" role="img">
+      <title>SD x4 Upscaler top-level forward pass: text and image conditioning, iterative denoising loop, and final decode</title>
+      <desc>A text prompt is encoded by an OpenCLIP text encoder into 1024-dim embeddings that feed the UNet's cross-attention layers, while the LR image is separately noise-augmented into a conditioning signal that is concatenated with the latent, and a pure-noise latent is initialised at the LR image's own pixel resolution. At every timestep the current noisy latent is concatenated with the conditioning image into a 7-channel UNet input; the timestep and noise-level embeddings enter the UNet separately from that concat; the UNet, attending to the text embeddings, outputs a v-prediction (a blend of noise and clean signal), and a DDIM step converts it into a less-noisy latent. This repeats for 30 steps from t=T to t=0, after which a specially-trained VAE decoder performs the actual 4x spatial upscale to produce the HR output.</desc>
+      <defs>
+        <marker id="arch-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+<g class="arch-node">
+<rect x="705" y="8" width="200" height="60" rx="11" />
+<text class="title" x="805.0" y="34" text-anchor="middle" font-size="15.5">Prompt</text>
+<text class="sub" x="805.0" y="54" text-anchor="middle" font-size="12.5">text description, this run</text>
+</g>
+<g class="arch-node">
+<rect x="705" y="82" width="200" height="86" rx="11" />
+<text class="title" x="805.0" y="112" text-anchor="middle" font-size="15.5">Text Encoder</text>
+<text class="sub" x="805.0" y="134" text-anchor="middle" font-size="12.5">OpenCLIP-ViT/H, 1024-d</text>
+<text class="sub" x="805.0" y="152" text-anchor="middle" font-size="12.5">&rarr; cross-attn K/V in UNet</text>
+</g>
+<line x1="805" y1="68" x2="805" y2="82" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="805" y1="168" x2="805" y2="182" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="805" y1="298" x2="805" y2="280" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="805" y="312" text-anchor="middle" font-size="12.5">t + noise-level embed</text>
+<text class="sub " x="805" y="328" text-anchor="middle" font-size="12.5">summed, added inside every ResBlock</text>
+<g class="arch-node">
+<rect x="20" y="191" width="130" height="78" rx="11" />
+<text class="title" x="85.0" y="220.6" text-anchor="middle" font-size="15.5">LR Input</text>
+<text class="sub" x="85.0" y="244.1" text-anchor="middle" font-size="12.5">3ch, native res</text>
+</g>
+<g class="arch-node">
+<rect x="190" y="185" width="190" height="90" rx="11" />
+<text class="title" x="285.0" y="212.0" text-anchor="middle" font-size="15.5">Noise-Augment</text>
+<text class="sub" x="285.0" y="233.5" text-anchor="middle" font-size="12.5">+&sigma; Gaussian noise</text>
+<text class="sub" x="285.0" y="252.0" text-anchor="middle" font-size="12.5">&rarr; noise-level embed</text>
+</g>
+<g class="arch-node">
+<rect x="190" y="35" width="190" height="90" rx="11" />
+<text class="title" x="285.0" y="62.0" text-anchor="middle" font-size="15.5">Latent Init z_T</text>
+<text class="sub" x="285.0" y="83.5" text-anchor="middle" font-size="12.5">N(0,I), 4ch, LR res</text>
+<text class="sub" x="285.0" y="102.0" text-anchor="middle" font-size="12.5">t = T (start)</text>
+</g>
+<g class="arch-node">
+<rect x="460" y="185" width="175" height="90" rx="11" />
+<text class="title" x="547.5" y="212.0" text-anchor="middle" font-size="15.5">Concat</text>
+<text class="sub" x="547.5" y="233.5" text-anchor="middle" font-size="12.5">4ch + 3ch &rarr; 7ch</text>
+<text class="sub" x="547.5" y="252.0" text-anchor="middle" font-size="12.5">at LR resolution</text>
+</g>
+<a class="arch-node linked" href="#sec-unet-zoom">
+<rect x="705" y="182" width="200" height="96" rx="11" />
+<text class="title" x="805.0" y="210.8" text-anchor="middle" font-size="15.5">UNet v&theta;(z_t, t)</text>
+<text class="sub" x="805.0" y="232.3" text-anchor="middle" font-size="12.5">down/mid/up blocks</text>
+<text class="sub" x="805.0" y="250.8" text-anchor="middle" font-size="12.5">&darr; zoom below</text>
+</a>
+<a class="arch-node linked" href="#sec-sampler-zoom">
+<rect x="975" y="182" width="210" height="96" rx="11" />
+<text class="title" x="1080.0" y="210.8" text-anchor="middle" font-size="15.5">Sampler Step</text>
+<text class="sub" x="1080.0" y="232.3" text-anchor="middle" font-size="12.5">DDIM (&eta;=0): z_t&rarr;z_(t&minus;&Delta;t)</text>
+<text class="sub" x="1080.0" y="250.8" text-anchor="middle" font-size="12.5">&darr; zoom below</text>
+</a>
+<g class="arch-node">
+<rect x="1275" y="185" width="190" height="90" rx="11" />
+<text class="title" x="1370.0" y="212.0" text-anchor="middle" font-size="15.5">VAE Decoder</text>
+<text class="sub" x="1370.0" y="233.5" text-anchor="middle" font-size="12.5">&times;4 spatial upscale</text>
+<text class="sub" x="1370.0" y="252.0" text-anchor="middle" font-size="12.5">non-standard decode</text>
+</g>
+<g class="arch-node">
+<rect x="1525" y="191" width="140" height="78" rx="11" />
+<text class="title" x="1595.0" y="220.6" text-anchor="middle" font-size="15.5">HR Output</text>
+<text class="sub" x="1595.0" y="244.1" text-anchor="middle" font-size="12.5">3ch, 4&times; LR res</text>
+</g>
+<line x1="150" y1="230" x2="190" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="380" y1="80" x2="500" y2="80" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M500 80 L500 187" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="380" y1="230" x2="460" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="635" y1="230" x2="705" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="905" y1="230" x2="975" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M1080.0 278 L1080.0 340 L547.5 340 L547.5 275" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="813.75" y="364" text-anchor="middle" font-size="13">repeat for 30 DDIM steps, t: T &rarr; 0 &mdash; each step's z feeds back into the next concat</text>
+<line x1="1185" y1="230" x2="1275" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1230.0" y="164" text-anchor="middle" font-size="12.5">loop exits at t=0</text>
+<line x1="1465" y1="230" x2="1525" y2="230" class="arch-edge" marker-end="url(#arch-arrow)"/>
+    </svg>
+    </div>
+
+    <div class="risk-note">
+      <span class="risk-icon">&#127922;</span>
+      <p><strong>Where invention enters &mdash; the prompt.</strong> This run's fixed prompt, <code>DEFAULT_PROMPT</code> = "a high resolution aerial satellite photograph, sharp detail, realistic terrain" (see the settings table above), describes a <em>look</em>, not information read off the LR pixels. Cross-attention lets that description steer every denoising step, so whatever "sharp" and "realistic" mean inside the model's learned prior is what fills the missing high-frequency content, independent of whether it matches the actual terrain.</p>
+    </div>
+
+    <h3>Walking the forward pass, block by block</h3>
+    <p>The pipeline conditions on two separate signals at once: a text prompt, encoded by a fixed, pretrained OpenCLIP-ViT/H text encoder and fed to the UNet's cross-attention layers, as in text-to-image Stable Diffusion, and the low-resolution (LR) image, which is noise-augmented and concatenated onto the latent instead of going through cross-attention. It also runs the diffusion process at the LR image's own pixel resolution instead of the heavily-downsampled latent space ordinary Stable Diffusion uses. That resolution choice is the key structural difference from a standard SD checkpoint: there's no separate VAE <em>encoder</em> step for the conditioning image, and the spatial &times;4 jump happens exactly once, at the very end, inside a VAE decoder retrained specifically for this task.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-label">Conditioning path</div>
+        <div class="card-title">Noise-augment the LR image</div>
+        <p>A controlled amount of Gaussian noise is mixed into the LR input before it's used as conditioning, and the model is told exactly how much via a separate noise-level embedding. This makes the upscaler more tolerant of LR images that weren't produced by the exact same degradation pipeline used during training &mdash; a trick borrowed from cascaded / SR3-style super-resolution diffusion models.</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Generative path</div>
+        <div class="card-title">Pure-noise latent init</div>
+        <p>z_T starts as standard Gaussian noise, 4 channels, sized to the LR image's own resolution (not 8&times; downsampled). Over the sampling loop this noise is progressively reshaped into the missing high-frequency detail the model has learned to hallucinate.</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Text conditioning path</div>
+        <div class="card-title">Prompt &rarr; OpenCLIP &rarr; cross-attention</div>
+        <p>The prompt is encoded once, up front, into 1024-dim embeddings; those don't change across the 30 steps. They never touch the concat &mdash; they reach the UNet only as the key/value pairs its cross-attention layers read in levels L2&ndash;L4 and the mid block (L1 has no attention; see the UNet zoom).</p>
+      </div>
+    </div>
+
+    <p>At every timestep, the noisy latent and the noise-augmented conditioning image are stacked channel-wise &mdash; 4ch + 3ch &rarr; 7ch &mdash; and fed into the UNet together with two scalar conditioning signals: the diffusion timestep t and the LR noise-augmentation level (inside the UNet these are summed into a single embedding; see the zoom below). The fixed text embeddings from OpenCLIP ride along unchanged at every one of the 30 steps, read by cross-attention rather than joining the concat; the sampler also runs the UNet a second time per step with an empty prompt for classifier-free guidance (see the sampler zoom). The UNet's output is a v-prediction, v<sub>&theta;</sub>(z_t, t): a blend of noise and clean signal rather than the noise itself, because the released scheduler configuration for this checkpoint is set to v-prediction. A DDIM step then converts that output into estimates of x_0 and &epsilon; and uses them to compute a slightly-less-noisy z_(t&minus;&Delta;t). With &eta;=0, DDIM is a deterministic, ODE-style solver, which is what lets the loop run in 30 steps rather than the full 1000 timesteps the model was trained across.</p>
+
+    <p>That z feeds straight back into the next concat, so the loop is self-contained: the LR conditioning stays fixed, only the latent evolves. Once t reaches 0, the loop exits and the final latent passes through the specially-trained VAE decoder, which performs the actual &times;4 spatial upscale to produce the HR output. Everything before that point &mdash; noise-augment, concat, UNet, sampler &mdash; runs at a single, fixed spatial resolution; the upscaling factor lives entirely in that final decode step.</p>
+
+    <p class="zoom-caption" id="sec-unet-zoom">Zoom &mdash; inside one UNet denoising step</p>
+    <p class="zoom-sub">four-level UNet with concatenating skip connections; the dashed bus carries the text embeddings into cross-attention. Fractions on the left are spatial size relative to the LR-resolution latent</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1300 760" role="img">
+<title>Inside one UNet denoising step: four-level down/mid/up path, concatenating skip connections, and the text-embedding bus feeding cross-attention</title>
+<desc>The 7-channel input passes through an input convolution and four downsampling levels (256, 512, 512 and 1024 channels, two ResBlocks each; level 1 has no attention, levels 2 and 3 use cross-attention to text only, level 4 uses self- and cross-attention), then a mid block at the deepest resolution, then four upsampling levels with three ResBlocks each. A fixed 1024-dim text embedding bus, computed once from the prompt, feeds every cross-attention layer at L2, L3, L4 and the mid block; L1 receives no text conditioning. Each up level concatenates three skip tensors from the matching resolution. A final output layer produces the 4-channel v prediction.</desc>
+<g class="arch-node">
+<rect x="430" y="20" width="260" height="90" rx="11" />
+<text class="title" x="560.0" y="50" text-anchor="middle" font-size="15.5">Text Embed</text>
+<text class="sub" x="560.0" y="72" text-anchor="middle" font-size="12">OpenCLIP-ViT/H, 1024-d</text>
+<text class="sub" x="560.0" y="90" text-anchor="middle" font-size="12">&rarr; K/V, fixed for all 30 steps</text>
+</g>
+<line x1="560" y1="110" x2="560" y2="686" class="arch-bus"/>
+<text class="bus-label" x="550" y="150" style="text-anchor:end;font-size:11px;">text embed bus</text>
+<line x1="560" y1="386" x2="350" y2="386" class="arch-tap out"/>
+<line x1="560" y1="386" x2="1010" y2="386" class="arch-tap out"/>
+<line x1="560" y1="526" x2="350" y2="526" class="arch-tap out"/>
+<line x1="560" y1="526" x2="1010" y2="526" class="arch-tap out"/>
+<line x1="560" y1="666" x2="350" y2="666" class="arch-tap out"/>
+<line x1="560" y1="666" x2="1010" y2="666" class="arch-tap out"/>
+<g class="arch-node">
+<rect x="90" y="30" width="260" height="96" rx="11" />
+<text class="title" x="220.0" y="60" text-anchor="middle" font-size="15.5">Input</text>
+<text class="sub" x="220.0" y="82" text-anchor="middle" font-size="12">7ch (z_t concat cond)</text>
+<text class="sub" x="220.0" y="100" text-anchor="middle" font-size="12">input conv &rarr; 256ch</text>
+</g>
+<g class="arch-node">
+<rect x="1010" y="30" width="260" height="96" rx="11" />
+<text class="title" x="1140.0" y="60" text-anchor="middle" font-size="15.5">Output &rarr; v&theta;(z_t, t)</text>
+<text class="sub" x="1140.0" y="82" text-anchor="middle" font-size="12">norm &rarr; SiLU &rarr; conv</text>
+<text class="sub" x="1140.0" y="100" text-anchor="middle" font-size="12">predicted v, 4ch</text>
+</g>
+<g class="arch-node">
+<rect x="90" y="170" width="260" height="96" rx="11" />
+<text class="title" x="220.0" y="200" text-anchor="middle" font-size="15.5">Down L1 &middot; 256ch</text>
+<text class="sub" x="220.0" y="222" text-anchor="middle" font-size="12">2&times; ResBlock, no attention</text>
+<text class="sub" x="220.0" y="240" text-anchor="middle" font-size="12">&darr; downsample</text>
+</g>
+<g class="arch-node">
+<rect x="90" y="310" width="260" height="96" rx="11" />
+<text class="title" x="220.0" y="340" text-anchor="middle" font-size="15.5">Down L2 &middot; 512ch</text>
+<text class="sub" x="220.0" y="362" text-anchor="middle" font-size="12">2&times; (ResBlock + cross-attn)</text>
+<text class="sub" x="220.0" y="380" text-anchor="middle" font-size="12">&darr; downsample</text>
+</g>
+<g class="arch-node">
+<rect x="90" y="450" width="260" height="96" rx="11" />
+<text class="title" x="220.0" y="480" text-anchor="middle" font-size="15.5">Down L3 &middot; 512ch</text>
+<text class="sub" x="220.0" y="502" text-anchor="middle" font-size="12">2&times; (ResBlock + cross-attn)</text>
+<text class="sub" x="220.0" y="520" text-anchor="middle" font-size="12">&darr; downsample</text>
+</g>
+<g class="arch-node">
+<rect x="90" y="590" width="260" height="96" rx="11" />
+<text class="title" x="220.0" y="620" text-anchor="middle" font-size="15.5">Down L4 &middot; 1024ch</text>
+<text class="sub" x="220.0" y="642" text-anchor="middle" font-size="12">2&times; (ResBlock + self/cross-attn)</text>
+<text class="sub" x="220.0" y="660" text-anchor="middle" font-size="12">no downsample</text>
+</g>
+<g class="arch-node">
+<rect x="550" y="590" width="260" height="96" rx="11" />
+<text class="title" x="680.0" y="620" text-anchor="middle" font-size="15.5">Mid &middot; 1024ch</text>
+<text class="sub" x="680.0" y="642" text-anchor="middle" font-size="12">ResBlock &middot; Attn &middot; ResBlock</text>
+<text class="sub" x="680.0" y="660" text-anchor="middle" font-size="12">bottleneck, 1/8 size</text>
+</g>
+<g class="arch-node">
+<rect x="1010" y="590" width="260" height="96" rx="11" />
+<text class="title" x="1140.0" y="620" text-anchor="middle" font-size="15.5">Up L4 &middot; 1024ch</text>
+<text class="sub" x="1140.0" y="642" text-anchor="middle" font-size="12">3&times; (ResBlock + self/cross-attn)</text>
+<text class="sub" x="1140.0" y="660" text-anchor="middle" font-size="12">&uarr; upsample</text>
+</g>
+<g class="arch-node">
+<rect x="1010" y="450" width="260" height="96" rx="11" />
+<text class="title" x="1140.0" y="480" text-anchor="middle" font-size="15.5">Up L3 &middot; 512ch</text>
+<text class="sub" x="1140.0" y="502" text-anchor="middle" font-size="12">3&times; (ResBlock + cross-attn)</text>
+<text class="sub" x="1140.0" y="520" text-anchor="middle" font-size="12">&uarr; upsample</text>
+</g>
+<g class="arch-node">
+<rect x="1010" y="310" width="260" height="96" rx="11" />
+<text class="title" x="1140.0" y="340" text-anchor="middle" font-size="15.5">Up L2 &middot; 512ch</text>
+<text class="sub" x="1140.0" y="362" text-anchor="middle" font-size="12">3&times; (ResBlock + cross-attn)</text>
+<text class="sub" x="1140.0" y="380" text-anchor="middle" font-size="12">&uarr; upsample</text>
+</g>
+<g class="arch-node">
+<rect x="1010" y="170" width="260" height="96" rx="11" />
+<text class="title" x="1140.0" y="200" text-anchor="middle" font-size="15.5">Up L1 &middot; 256ch</text>
+<text class="sub" x="1140.0" y="222" text-anchor="middle" font-size="12">3&times; ResBlock, no attention</text>
+<text class="sub" x="1140.0" y="240" text-anchor="middle" font-size="12">no upsample</text>
+</g>
+<line x1="220.0" y1="126" x2="220.0" y2="170" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="220.0" y1="266" x2="220.0" y2="310" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="232.0" y="292" text-anchor="start" font-size="12">downsample</text>
+<line x1="220.0" y1="406" x2="220.0" y2="450" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="232.0" y="432" text-anchor="start" font-size="12">downsample</text>
+<line x1="220.0" y1="546" x2="220.0" y2="590" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="232.0" y="572" text-anchor="start" font-size="12">downsample</text>
+<line x1="1140.0" y1="590" x2="1140.0" y2="546" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1152.0" y="572" text-anchor="start" font-size="12">upsample</text>
+<line x1="1140.0" y1="450" x2="1140.0" y2="406" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1152.0" y="432" text-anchor="start" font-size="12">upsample</text>
+<line x1="1140.0" y1="310" x2="1140.0" y2="266" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1152.0" y="292" text-anchor="start" font-size="12">upsample</text>
+<line x1="1140.0" y1="170" x2="1140.0" y2="126" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="350" y1="638" x2="550" y2="638" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="810" y1="638" x2="1010" y2="638" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="350" y1="218" x2="1010" y2="218" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="790" y="210" text-anchor="middle" font-size="12.5">skip &mdash; channel-wise concat (3 tensors)</text>
+<line x1="350" y1="358" x2="1010" y2="358" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="790" y="350" text-anchor="middle" font-size="12.5">skip &mdash; channel-wise concat (3 tensors)</text>
+<line x1="350" y1="498" x2="1010" y2="498" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="790" y="490" text-anchor="middle" font-size="12.5">skip &mdash; channel-wise concat (3 tensors)</text>
+<path d="M220.0 686 L220.0 722 L1140.0 722 L1140.0 686" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="680.0" y="740" text-anchor="middle" font-size="12.5">skip &mdash; channel-wise concat (3 tensors)</text>
+<text class="sub " x="26" y="222" text-anchor="start" font-size="12">L1 &middot; 1&times;</text>
+<text class="sub " x="26" y="362" text-anchor="start" font-size="12">L2 &middot; 1/2</text>
+<text class="sub " x="26" y="502" text-anchor="start" font-size="12">L3 &middot; 1/4</text>
+<text class="sub " x="26" y="642" text-anchor="start" font-size="12">L4 &middot; 1/8</text>
+<text class="sub " x="850" y="40" text-anchor="middle" font-size="12">timestep + noise-level embeddings</text>
+<text class="sub " x="850" y="56" text-anchor="middle" font-size="12">are summed, then added inside every</text>
+<text class="sub " x="850" y="72" text-anchor="middle" font-size="12">ResBlock (Down, Mid, Up)</text>
+<text class="sub " x="850" y="98" text-anchor="middle" font-size="12">teal lines: text K/V into cross-attn</text>
+<text class="sub " x="850" y="114" text-anchor="middle" font-size="12">LR image enters via input concat only</text>
+</svg>
+    </div>
+
+    <div class="risk-note">
+      <span class="risk-icon">&#127922;</span>
+      <p><strong>Where invention enters &mdash; the prior.</strong> The UNet was trained on a broad web-image dataset (a LAION subset, per the model card), not on satellite or aerial data specifically, and the OpenCLIP text encoder it listens to was trained on web image&ndash;text pairs. Applied zero-shot to RESISC45 / NAIP, the model fills in missing detail from that learned prior &mdash; a source of invented content that exists even with no prompt and no guidance.</p>
+    </div>
+
+    <h3>Down / mid / up, and what the skip connections are actually doing</h3>
+    <p>The UNet has four resolution levels. On the way down it runs two ResBlocks per level and halves the spatial size after each of the first three, while channel width grows 256 &rarr; 512 &rarr; 512 &rarr; 1024; the mid block then works on the same 1/8-size grid as the deepest level. That compression gives the network a large receptive field, which matters for predicting v consistently across big regions instead of in disconnected patches. Attention is not uniform across levels, going by the released config: level 1 has none, levels 2 and 3 use attention layers that attend only to the text embeddings (the config sets only_cross_attention for them, so there is no image self-attention there), and level 4 combines self-attention over the image with cross-attention to the text. The mid block has attention of its own.</p>
+
+    <p>The up path mirrors it: four levels again, but three ResBlocks per level, and each ResBlock concatenates in a skip tensor of matching resolution before it runs. The horizontal arrows are channel-wise <strong>concatenation</strong>, not addition, and each one stands for three skip tensors: that level's two down-path ResBlock outputs plus the previous level's downsample output (the input-conv output, for level 1). That is how the up path recovers fine spatial detail the bottleneck would otherwise discard, at the cost of a wider input to each ResBlock. Levels 4, 3 and 2 upsample on the way up; level 1 does not.</p>
+
+    <p>The two scalar conditioning signals are not injected as separate embeddings. The noise level enters as a class-label embedding (the config declares 1000 classes) that is added to the timestep embedding, and the summed embedding is projected and added to the feature maps inside every ResBlock, down, mid and up. That is an additive bias, not AdaGN-style scale-and-shift modulation. The output layer maps back to 4 channels &mdash; the same shape as the input latent &mdash; producing v<sub>&theta;</sub>, which the sampler step combines with z_t.</p>
+
+    <p>The cross-attention layers attend to the text-encoder embeddings (cross-attention dimension 1024), which is how the prompt conditions the denoiser, while the LR image enters only through the concatenation at the input. That text embedding is computed once, up front, from the prompt, and stays fixed across all 30 steps &mdash; it's the dashed bus in the diagram above, tapping into every cross-attention layer at L2, L3, L4 and the mid block (L1 gets no text conditioning at all). During the unconditional guidance pass the same bus simply carries an empty-prompt embedding instead (see the sampler zoom).</p>
+
+    <p class="zoom-caption" id="sec-sampler-zoom">Zoom &mdash; inside one sampler step</p>
+    <p class="zoom-sub">how the guided v prediction becomes the next latent, repeated across a respaced t:1000&rarr;0 schedule</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1360 580" role="img">
+      <title>Inside one sampler step: classifier-free guidance combines two UNet passes, then two parallel branches (scaled x_0 and scaled noise estimate) are summed into z_(t&minus;&Delta;t)</title>
+      <desc>A representative timestep t is drawn from a respaced schedule of 30 DDIM steps spread across the full range t=1000 to t=0. At each such step the UNet runs twice on the same z_t, t: once conditioned on the prompt's text embeddings and once with an empty prompt. The two v predictions are combined with a guidance scale w via classifier-free guidance. The guided v is then converted, in two parallel branches, into a scaled denoised estimate x0 and a scaled noise estimate epsilon; these two terms are summed (eta=0, so no fresh noise) to produce the next latent z_(t-Delta t). That latent feeds back into the next iteration's concat step, repeating until the schedule reaches t=0.</desc>
+<line x1="40" y1="80" x2="1320" y2="80" class="arch-bus"/>
+<text class="sub" x="680" y="24" text-anchor="middle" font-size="12.5">sampler schedule (respaced) &mdash; 30 DDIM steps spread across t:1000&rarr;0, not all 1000 (ticks illustrative)</text>
+<g class="arch-node x0"><circle cx="90" cy="80" r="22"/><text x="90" y="80">1000</text></g>
+<g class="arch-node x0"><circle cx="330" cy="80" r="22"/><text x="330" y="80">800</text></g>
+<g class="arch-node x0"><circle cx="702" cy="80" r="24" style="fill:var(--teal-dim); stroke:var(--teal); stroke-width:1.8;"/><text x="702" y="80" style="fill:var(--teal); font-weight:600;">t</text></g>
+<text class="sub" x="930" y="87" text-anchor="middle" font-size="20">&hellip;</text>
+<g class="arch-node x0"><circle cx="1130" cy="80" r="22"/><text x="1130" y="80">200</text></g>
+<g class="arch-node x0"><circle cx="1310" cy="80" r="22"/><text x="1310" y="80">0</text></g>
+<text class="sub" x="714" y="126" text-anchor="start" font-size="12" style="fill:var(--teal);">zoomed below &darr;</text>
+<line x1="702" y1="106" x2="702" y2="144" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<g class="arch-node">
+<rect x="20" y="220" width="150" height="104" rx="11" />
+<text class="title" x="95.0" y="251.2" text-anchor="middle" font-size="15.5">z_t, t</text>
+<text class="sub" x="95.0" y="272.7" text-anchor="middle" font-size="12">current noisy latent</text>
+<text class="sub" x="95.0" y="290.7" text-anchor="middle" font-size="12">+ fixed conditioning</text>
+</g>
+<a class="arch-node linked" href="#sec-unet-zoom">
+<rect x="204" y="170" width="200" height="80" rx="11" />
+<text class="title" x="304.0" y="198" text-anchor="middle" font-size="14">v_c &middot; conditional</text>
+<text class="sub" x="304.0" y="218" text-anchor="middle" font-size="11.5">text embed &rarr; cross-attn</text>
+<text class="sub" x="304.0" y="234" text-anchor="middle" font-size="11.5">(the actual prompt)</text>
+</a>
+<a class="arch-node linked" href="#sec-unet-zoom">
+<rect x="204" y="294" width="200" height="80" rx="11" />
+<text class="title" x="304.0" y="322" text-anchor="middle" font-size="14">v_u &middot; unconditional</text>
+<text class="sub" x="304.0" y="342" text-anchor="middle" font-size="11.5">empty prompt &rarr; cross-attn</text>
+<text class="sub" x="304.0" y="358" text-anchor="middle" font-size="11.5">(null conditioning)</text>
+</a>
+<text class="sub" x="304.0" y="276" text-anchor="middle" font-size="11">same z_t, t &mdash; UNet run twice</text>
+<g class="arch-node">
+<rect x="444" y="220" width="200" height="104" rx="11" />
+<text class="title" x="544.0" y="251.2" text-anchor="middle" font-size="14.5">CFG Combine</text>
+<text class="sub" x="544.0" y="272.7" text-anchor="middle" font-size="11.5">v_g = v_u + w&middot;(v_c&minus;v_u)</text>
+<text class="sub" x="544.0" y="290.7" text-anchor="middle" font-size="11.5">w = 9.0 (this run)</text>
+</g>
+<g class="arch-node">
+<rect x="690" y="150" width="210" height="90" rx="11" />
+<text class="title" x="795.0" y="179" text-anchor="middle" font-size="15.5">Predict x_0</text>
+<text class="sub" x="795.0" y="200" text-anchor="middle" font-size="12">x_0 from v_g and z_t</text>
+<text class="sub" x="795.0" y="218" text-anchor="middle" font-size="12">&times; &radic;&#x1FB1;_(t&minus;&Delta;t)</text>
+</g>
+<g class="arch-node">
+<rect x="690" y="304" width="210" height="90" rx="11" />
+<text class="title" x="795.0" y="333" text-anchor="middle" font-size="15.5">Direction Term</text>
+<text class="sub" x="795.0" y="354" text-anchor="middle" font-size="12">&epsilon; from v_g and z_t</text>
+<text class="sub" x="795.0" y="372" text-anchor="middle" font-size="12">&times; &radic;(1&minus;&#x1FB1;_(t&minus;&Delta;t))</text>
+</g>
+<text class="sub" x="795" y="413" text-anchor="middle" font-size="11.5">both branches also read z_t</text>
+<g class="arch-op"><circle cx="980" cy="272" r="23"/><text x="980" y="277" font-size="15">+</text></g>
+<g class="arch-node">
+<rect x="1070" y="220" width="190" height="104" rx="11" />
+<text class="title" x="1165.0" y="251.2" text-anchor="middle" font-size="15.5">z_(t&minus;&Delta;t)</text>
+<text class="sub" x="1165.0" y="272.7" text-anchor="middle" font-size="12">next, less-noisy latent</text>
+<text class="sub" x="1165.0" y="290.7" text-anchor="middle" font-size="12">&rarr; feeds next concat</text>
+</g>
+<path d="M170 272 L188 272 L188 210 L204 210" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M170 272 L188 272 L188 334 L204 334" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M404 210 L424 210 L424 272 L444 272" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M404 334 L424 334 L424 272 L444 272" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M644 272 L667 272 L667 195 L690 195" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M644 272 L667 272 L667 349 L690 349" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub" x="656" y="264" text-anchor="middle" font-size="11">v_g</text>
+<path d="M900 195 L980 195 L980 249" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M900 349 L980 349 L980 295" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1003" y1="272" x2="1070" y2="272" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M1165 324 L1165 424 L95 424 L95 324" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="625" y="442" text-anchor="middle" font-size="13">repeats until t=0 &mdash; each z_(t&minus;&Delta;t) becomes next iteration's z_t, re-concatenated with the same (fixed) conditioning image</text>
+<g class="arch-node note">
+<rect x="20" y="470" width="480" height="96" rx="11" />
+<text class="title" x="260.0" y="498.8" text-anchor="middle" font-size="15.5">&eta; = 0: deterministic sampler</text>
+<text class="sub" x="260.0" y="520.3" text-anchor="middle" font-size="12">no noise is injected between steps, but z_T and the</text>
+<text class="sub" x="260.0" y="538.3" text-anchor="middle" font-size="12">LR-augmentation noise still need a fixed seed</text>
+</g>
+    </svg>
+    </div>
+
+    <div class="risk-note">
+      <span class="risk-icon">&#127922;</span>
+      <p><strong>Where invention enters &mdash; guidance.</strong> v<sub>g</sub> = v<sub>u</sub> + w&middot;(v<sub>c</sub>&minus;v<sub>u</sub>) extrapolates past the unconditional prediction along the direction the prompt moves it, for every w &gt; 1, so a higher guidance scale gives the prompt more influence over the result. The LR image is fed to both passes, so guidance amplifies only the prompt's contribution. Whether that shows up as more invented detail is something to test rather than assume: re-run the same images at a few values of w (w=9.0 in this run, per the settings table above) and compare.</p>
+    </div>
+
+    <h3>One step, and why fewer than 1000 of them is enough</h3>
+    <p>Training defines the diffusion process across 1000 discrete timesteps, but sampling doesn't have to visit all of them. The schedule strip above shows the idea: the DDIM scheduler picks a much shorter subsequence &mdash; 30 steps in this project &mdash; spread across the full t:1000&rarr;0 range, and the sampler only ever runs the UNet at those chosen points. This works because DDIM-style samplers treat denoising as solving a deterministic ODE rather than the strictly step-by-step Markov chain used during training; skipping most of the intermediate points introduces only a small discretization error, which is the trade-off being made for speed.</p>
+
+    <p>Each of those 30 steps also runs the UNet twice, not once. A conditional pass (v<sub>c</sub>) reads the prompt's embeddings through cross-attention, and an unconditional pass (v<sub>u</sub>) reads an empty prompt instead, with everything else &mdash; z_t, t, the LR conditioning &mdash; held identical between the two. Classifier-free guidance then combines the pair into a single guided prediction, v<sub>g</sub> = v<sub>u</sub> + w&middot;(v<sub>c</sub>&minus;v<sub>u</sub>), where w is the guidance scale chosen for this run: w=1 would just take the conditional pass on its own, and larger w pushes the result further in the direction the prompt moves it, at the usual cost of over-saturated or over-sharpened output if pushed too far. It's this guided v<sub>g</sub>, not either pass alone, that the rest of the step is built from.</p>
+
+    <p>The network predicts v, not noise, so the sampler first converts the guided v<sub>g</sub>, writing &#x1FB1;_t for the cumulative product of the noise schedule (&alpha;_t in the DDIM paper): x_0 &asymp; &radic;&#x1FB1;_t&middot;z_t &minus; &radic;(1&minus;&#x1FB1;_t)&middot;v<sub>g</sub>, and &epsilon;&#770; = &radic;(1&minus;&#x1FB1;_t)&middot;z_t + &radic;&#x1FB1;_t&middot;v<sub>g</sub>. The next latent is then assembled from the two: z_(t&minus;&Delta;t) = &radic;&#x1FB1;_(t&minus;&Delta;t)&middot;x_0 + &radic;(1&minus;&#x1FB1;_(t&minus;&Delta;t))&middot;&epsilon;&#770;, where the second term is the "direction" term. With &eta;=0 no fresh random noise is injected between steps, which is what makes DDIM deterministic. Identical output additionally requires the same seed for the starting latent z_T and for the noise added to the LR conditioning image, since that augmentation noise is also drawn at inference time.</p>
+
+
+    <h3>Real-ESRGAN vs. this pipeline: point estimate vs. sampling from p(HR|LR)</h3>
+    <p>"Deterministic vs. iterative" isn't the right way to draw this comparison &mdash; DDIM at &eta;=0 is itself deterministic given a fixed seed, as the caveat box above notes, so both pipelines can be made to return the same output on the same input twice. The real distinction is what each one is estimating. Real-ESRGAN is trained as a direct regression: one forward pass maps a given LR image to one HR output, full stop &mdash; there's no notion of "a different but equally valid" output for the same input. This pipeline instead samples from a learned distribution over plausible reconstructions, p(HR|LR): the same LR image, prompt and guidance scale, but a different starting latent z<sub>T</sub> or a different LR-noise-augmentation seed, can produce a different HR image that's still a plausible sample from that distribution.</p>
+    <p>That's also why "hallucination" means something different for the two. Real-ESRGAN can also invent plausible texture (it is trained with an adversarial loss alongside L1 and perceptual losses), but for a given input it invents the same thing every time, so its output is one fixed answer that is either close to the true HR image or not. Any one sample from p(HR|LR), by contrast, can be a perfectly typical draw from the distribution the model learned and still not match the specific ground truth &mdash; sampling variance, not just model error, is baked into what this pipeline is doing.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2><span class="num">01</span>Training-time v-prediction loss</h2>
+      <a class="badge badge-sourced" href="#sec-sources"><span class="badge-dot"></span>Sourced &mdash; loss objective, see Sources &darr;</a>
+      <span class="badge badge-unverified"><span class="badge-dot"></span>Unverified &mdash; training-procedure details</span>
+    </div>
+    <p class="zoom-caption" id="sec-loss-zoom">Zoom &mdash; the training-time v-prediction loss</p>
+    <p class="zoom-sub">how a single (HR, LR) pair becomes one training step &mdash; no iterative sampling here, just a random t and &epsilon;</p>
+    <div class="diagram-bleed">
+<svg class="arch-diagram" viewBox="0 0 1400 570" role="img">
+      <title>Training-time v-prediction loss: sampling a random timestep and noise vector, then training the UNet to predict the matching v target</title>
+      <desc>A clean latent z0, encoded from the paired HR image, is combined with a randomly sampled timestep t and noise vector epsilon via the closed-form forward diffusion process to produce a noisy latent z_t. This is concatenated with the same noise-augmented LR conditioning used at inference and fed to the UNet, which predicts v. The training loss is the mean squared error between the predicted v and the target v built from the sampled epsilon, z0 and t, and gradients from that loss update the UNet's weights.</desc>
+<g class="arch-node">
+<rect x="20" y="60" width="160" height="90" rx="11" />
+<text class="title" x="100.0" y="87" text-anchor="middle" font-size="15.5">z_0</text>
+<text class="sub" x="100.0" y="108.5" text-anchor="middle" font-size="12">clean latent (HR-encoded)</text>
+<text class="sub" x="100.0" y="127" text-anchor="middle" font-size="12">4ch, LR-res spatial size</text>
+</g>
+<g class="arch-node">
+<rect x="214" y="60" width="190" height="90" rx="11" />
+<text class="title" x="309.0" y="87" text-anchor="middle" font-size="15.5">Sample t, &epsilon;</text>
+<text class="sub" x="309.0" y="108.5" text-anchor="middle" font-size="12">t ~ Uniform(1,1000)</text>
+<text class="sub" x="309.0" y="127" text-anchor="middle" font-size="12">&epsilon; ~ N(0,I)</text>
+</g>
+<g class="arch-node">
+<rect x="438" y="60" width="230" height="90" rx="11" />
+<text class="title" x="553.0" y="87" text-anchor="middle" font-size="15.5">Forward Process</text>
+<text class="sub" x="553.0" y="108.5" text-anchor="middle" font-size="12">closed-form noise mix</text>
+<text class="sub" x="553.0" y="127" text-anchor="middle" font-size="12">no loop needed here</text>
+</g>
+<g class="arch-node">
+<rect x="20" y="250" width="280" height="90" rx="11" />
+<text class="title" x="160.0" y="277" text-anchor="middle" font-size="15.5">LR Conditioning</text>
+<text class="sub" x="160.0" y="298.5" text-anchor="middle" font-size="12">noise-augmented LR (paired)</text>
+<text class="sub" x="160.0" y="317" text-anchor="middle" font-size="12">own random level (unverified)</text>
+</g>
+<g class="arch-node">
+<rect x="702" y="155" width="170" height="90" rx="11" />
+<text class="title" x="787.0" y="182" text-anchor="middle" font-size="15.5">Concat</text>
+<text class="sub" x="787.0" y="203.5" text-anchor="middle" font-size="12">z_t (4ch) + cond (3ch)</text>
+<text class="sub" x="787.0" y="222" text-anchor="middle" font-size="12">&rarr; 7ch</text>
+</g>
+<a class="arch-node linked" href="#sec-unet-zoom">
+<rect x="906" y="155" width="190" height="90" rx="11" />
+<text class="title" x="1001.0" y="182" text-anchor="middle" font-size="15.5">v&theta;(z_t, t)</text>
+<text class="sub" x="1001.0" y="203.5" text-anchor="middle" font-size="12">predicted v, 4ch</text>
+<text class="sub" x="1001.0" y="222" text-anchor="middle" font-size="12">&darr; see UNet zoom</text>
+</a>
+<g class="arch-node">
+<rect x="1130" y="155" width="210" height="90" rx="11" />
+<text class="title" x="1235.0" y="182" text-anchor="middle" font-size="15.5">Loss: MSE</text>
+<text class="sub" x="1235.0" y="203.5" text-anchor="middle" font-size="12">v vs v&theta;</text>
+<text class="sub" x="1235.0" y="222" text-anchor="middle" font-size="12">mean squared error</text>
+</g>
+<line x1="180" y1="105" x2="214" y2="105" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="404" y1="105" x2="438" y2="105" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M668 105 L685 105 L685 180 L702 180" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M300 295 L693 295 L693 220 L702 220" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="872" y1="200" x2="906" y2="200" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<line x1="1096" y1="200" x2="1130" y2="200" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<g class="arch-node">
+<rect x="1130" y="48" width="210" height="76" rx="11" />
+<text class="title" x="1235.0" y="74" text-anchor="middle" font-size="15.5">Target v</text>
+<text class="sub" x="1235.0" y="94" text-anchor="middle" font-size="12">&radic;&#x1FB1;&middot;&epsilon; &minus; &radic;(1&minus;&#x1FB1;)&middot;z_0</text>
+<text class="sub" x="1235.0" y="110" text-anchor="middle" font-size="12">built from z_0, t, &epsilon;</text>
+</g>
+<path d="M309 60 L309 20 L1165 20 L1165 48" class="arch-edge dashed" marker-end="url(#arch-arrow)"/>
+<path d="M100 60 L100 8 L1205 8 L1205 48" class="arch-edge dashed" marker-end="url(#arch-arrow)"/>
+<line x1="1235" y1="124" x2="1235" y2="155" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<path d="M1270 245 L1270 410 L1001 410 L1001 245" class="arch-edge" marker-end="url(#arch-arrow)"/>
+<text class="sub " x="1135.5" y="426" text-anchor="middle" font-size="12.5">&nabla; loss backprops into UNet weights</text>
+<g class="arch-node note">
+<rect x="20" y="456" width="560" height="96" rx="11" />
+<text class="title" x="300.0" y="484.8" text-anchor="middle" font-size="15.5">One random step, not a loop</text>
+<text class="sub" x="300.0" y="506.3" text-anchor="middle" font-size="12">training draws a fresh t &amp; &epsilon; every example</text>
+<text class="sub" x="300.0" y="524.3" text-anchor="middle" font-size="12">no iterative sampling schedule at train time</text>
+</g>
+<g class="arch-node caveat">
+<rect x="620" y="456" width="560" height="96" rx="11" />
+<text class="title" x="900.0" y="484.8" text-anchor="middle" font-size="15.5">&#9888; Unverified in this report</text>
+<text class="sub" x="900.0" y="506.3" text-anchor="middle" font-size="12">VAE kept frozen while training (assumed)</text>
+<text class="sub" x="900.0" y="524.3" text-anchor="middle" font-size="12">conditioning noise level randomised per pair (not checked)</text>
+</g>
+    </svg>
+    </div>
+
+    <div class="risk-note">
+      <span class="risk-icon">&#127922;</span>
+      <p><strong>Where invention enters &mdash; the noise level.</strong> The checkpoint takes the augmentation level as an input, so it is a knob at inference time (20 in this run, per the settings table above). <span class="tag-unverified">Unverified</span> The expectation is that training randomised this level for every pair, and that higher levels make the model lean less on the LR pixels, but neither has been checked against the training code yet.</p>
+    </div>
+
+    <h3>Training is one regression step, not a loop</h3>
+    <p>Every other diagram on this page describes what happens at <em>inference</em> time, where the sampler iterates 30 times to turn pure noise into a sharp image. Training looks almost nothing like that. For each (HR, LR) pair in a batch, the model draws one random timestep t and one random noise vector &epsilon;, uses the closed-form forward-diffusion equation to jump directly to the corresponding noisy latent z_t &mdash; no denoising loop involved &mdash; and asks the UNet to predict the matching v target in a single forward pass. The same UNet, the same 7-channel concat, and the same timestep/noise-level embeddings from every other diagram here are reused unchanged; only how t is chosen differs (random instead of following a fixed schedule). <span class="tag-unverified">Unverified</span> The conditioning noise level is expected to be randomised per pair as well, but that has not been checked against the training code.</p>
+
+    <p>The loss is a v-prediction objective (Salimans &amp; Ho, 2022), not the plain noise-prediction loss of the original DDPM. With z_t = &radic;&#x1FB1;&middot;z_0 + &radic;(1&minus;&#x1FB1;)&middot;&epsilon;, the UNet is trained to output v = &radic;&#x1FB1;&middot;&epsilon; &minus; &radic;(1&minus;&#x1FB1;)&middot;z_0, and the loss is the mean squared error between that target and v<sub>&theta;</sub>. The dashed paths in the diagram carry z_0, t and the sampled &epsilon; into the target. It is still self-supervised: nothing beyond the paired HR/LR images is needed. This page takes the objective from the released scheduler configuration for this checkpoint, which specifies v-prediction.</p>
+
+    <p>Gradients from that loss flow back into the UNet's weights. <span class="tag-unverified">Unverified</span> The VAE is conventionally pretrained separately and kept frozen at this stage, which would make the UNet the only piece updated here. That is carried over from how latent-diffusion models are usually trained and has not been checked against this checkpoint's training code.</p>
+
+  </section>
+
+  <section id="sec-sources">
+    <div class="section-head">
+      <h2><span class="num">02</span>Sources</h2>
+    </div>
+    <p>Filled-teal "Grounded" badges cover claims checked against this project's own code (models.py). Outline-teal "Sourced" badges cover claims checked against the checkpoint's config files, the diffusers library source and the papers below. Coral "Unverified" tags mark claims that have not been checked. project8_report.html documents the benchmark, not the upscaler's internals, so it is not used as a source for any architecture claim.</p>
+
+    <div class="ref"><span class="ref-year">model</span> Stability AI, <a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler" target="_blank" rel="noopener">stable-diffusion-x4-upscaler</a> model card &mdash; text-guided design with a fixed OpenCLIP-ViT/H text encoder, the noise-level input, the v-prediction objective, and the training data (a LAION subset).</div>
+    <div class="ref"><span class="ref-year">config</span> <a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/scheduler/scheduler_config.json" target="_blank" rel="noopener">scheduler_config.json</a> &mdash; source for the DDIM scheduler and prediction_type: v_prediction, used throughout instead of &epsilon;-prediction.</div>
+    <div class="ref"><span class="ref-year">config</span> <a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/unet/config.json" target="_blank" rel="noopener">unet/config.json</a> &mdash; source for the four channel levels (256/512/512/1024), two ResBlocks per down level, 7 input / 4 output channels, the 1024-dim cross-attention, the 1000-entry class embedding, and which levels get attention.</div>
+    <div class="ref"><span class="ref-year">config</span> <a href="https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/a7b1e851c8090882146ee8ed207047d61755d8ea/vae/config.json" target="_blank" rel="noopener">vae/config.json</a> &mdash; source for the 4 latent channels and the 3-block VAE (the standard SD VAE has 4), i.e. the &times;4 latent-to-pixel factor.</div>
+    <div class="ref"><span class="ref-year">code</span> diffusers, <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_upscale.py" target="_blank" rel="noopener">pipeline_stable_diffusion_upscale.py</a> &mdash; source for the call defaults (num_inference_steps 75, guidance_scale 9.0, noise_level 20, eta 0.0), the classifier-free-guidance combination, the empty-prompt unconditional pass, and the noise augmentation of the LR image.</div>
+    <div class="ref"><span class="ref-year">code</span> diffusers, <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/unets/unet_2d_condition.py" target="_blank" rel="noopener">unet_2d_condition.py</a>, <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py" target="_blank" rel="noopener">attention.py</a>, <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/resnet.py" target="_blank" rel="noopener">resnet.py</a> &mdash; source for what only_cross_attention does, the mid block having self- and cross-attention, the class embedding summed with the timestep embedding, and the additive time-embedding injection in each ResBlock.</div>
+    <div class="ref"><span class="ref-year">code</span> diffusers, <a href="https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddim.py" target="_blank" rel="noopener">scheduling_ddim.py</a> &mdash; source for the v-prediction to x_0 / &epsilon; conversion and the &eta; handling. The code links point at the main branch, checked September 2026; use the tag matching your installed diffusers version if they differ.</div>
+    <div class="ref"><span class="ref-year">2020</span> Ho, Jain &amp; Abbeel, <a href="https://arxiv.org/abs/2006.11239" target="_blank" rel="noopener">"Denoising Diffusion Probabilistic Models"</a> &mdash; the original noise-prediction loss and the closed-form forward process.</div>
+    <div class="ref"><span class="ref-year">2021</span> Song, Meng &amp; Ermon, <a href="https://arxiv.org/abs/2010.02502" target="_blank" rel="noopener">"Denoising Diffusion Implicit Models"</a> (ICLR 2021) &mdash; source for the DDIM step used in the sampler zoom, and for &eta;=0 determinism.</div>
+    <div class="ref"><span class="ref-year">2022</span> Salimans &amp; Ho, <a href="https://arxiv.org/abs/2202.00512" target="_blank" rel="noopener">"Progressive Distillation for Fast Sampling of Diffusion Models"</a> (ICLR 2022) &mdash; source for the v-prediction target used in the training-loss zoom.</div>
+    <div class="ref"><span class="ref-year">2022</span> Ho &amp; Salimans, <a href="https://arxiv.org/abs/2207.12598" target="_blank" rel="noopener">"Classifier-Free Diffusion Guidance"</a> &mdash; source for the guided combination v<sub>g</sub> = v<sub>u</sub> + w&middot;(v<sub>c</sub>&minus;v<sub>u</sub>).</div>
+    <div class="ref"><span class="ref-year">local</span> models.py &mdash; this project's model-loading module; source for the run-settings table and the prompt-plus-LR-image conditioning: <code>DIFFUSION_MODEL_ID</code>, <code>DEFAULT_PROMPT</code>, the fp16/fp32 precision logic, and the fact that <code>run_diffusion_upscaler</code> never passes <code>guidance_scale</code>, <code>noise_level</code>, <code>eta</code>, <code>negative_prompt</code> or a generator &mdash; which is how those rows resolve to the diffusers defaults.</div>
+    <div class="ref"><span class="ref-year">local</span> project8_report.html &mdash; this project's own benchmark report, the Real-ESRGAN vs. Stable Diffusion comparison this page accompanies. Not used as a source for architecture claims.</div>
+  </section>
+
+</div>
+
+<footer>project 8 &middot; companion deep-dive &middot; DRAFT &middot; filled teal = grounded in this project's code (models.py) &middot; outline teal = sourced from configs, library code and papers below &middot; coral = unverified or not yet built &middot; dashed grey = note &middot; amber = where this pipeline invents detail</footer>
+
+</body>
+</html>
